@@ -1,0 +1,32 @@
+# dependencies
+node_modules
+
+# git, vs config
+.vscode
+.gitignore
+
+# compiled output
+dist
+
+**/node_modules
+package-lock.json
+**/package-lock.json
+
+# tests
+coverage
+
+# git, vs config
+.git
+.husky
+**/.vscode
+
+# docs
+CHANGELOG.md
+README.md
+
+# deploy
+deploy
+
+# lint
+commitlint.config.ts
+**/.gitignore

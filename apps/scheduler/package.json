@@ -1,0 +1,13 @@
+{
+      "name": "@app/scheduler",
+      "version": "1.0.0",
+      "license": "MIT",
+      "dependencies": {
+            "@nestjs/jwt": "^10.2.0",
+            "@nestjs/passport": "^10.0.3",
+            "passport-jwt": "^4.0.1"
+      },
+      "devDependencies": {
+            "@types/passport-jwt": "^4.0.1"
+      }
+}

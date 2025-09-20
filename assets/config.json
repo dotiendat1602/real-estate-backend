@@ -1,0 +1,152 @@
+{
+  "bonusProfitReferralNormal": 2000,
+  "bonusProfitReferralPremium": 4000,
+  "levels": [
+    {
+      "level": 0,
+      "name": "",
+      "coins": 0,
+      "bonusToInviter": 0
+    },
+    {
+      "level": 1,
+      "name": "Beginner",
+      "coins": 0,
+      "bonusToInviter": 300,
+      "percent": 0
+    },
+    {
+      "level": 2,
+      "name": "Apprentice",
+      "coins": 100,
+      "bonusToInviter": 20,
+      "percent": 0.2
+    },
+    {
+      "level": 3,
+      "name": "Trainee",
+      "coins": 400,
+      "bonusToInviter": 80,
+      "percent": 0.2
+    },
+    {
+      "level": 4,
+      "name": "Rookie",
+      "coins": 1000,
+      "bonusToInviter": 200,
+      "percent": 0.2
+    },
+    {
+      "level": 5,
+      "name": "Aspirant",
+      "coins": 1500,
+      "bonusToInviter": 300,
+      "percent": 0.2
+    },
+    {
+      "level": 6,
+      "name": "Go-getter",
+      "coins": 3000,
+      "bonusToInviter": 600,
+      "percent": 0.2
+    },
+    {
+      "level": 7,
+      "name": "Achiever",
+      "coins": 5000,
+      "bonusToInviter": 750,
+      "percent": 0.15
+    },
+    {
+      "level": 8,
+      "name": "Climber ",
+      "coins": 8000,
+      "bonusToInviter": 1200,
+      "percent": 0.15
+    },
+    {
+      "level": 9,
+      "name": "Contender",
+      "coins": 12000,
+      "bonusToInviter": 1800,
+      "percent": 0.15
+    },
+    {
+      "level": 10,
+      "name": "Master",
+      "coins": 20000,
+      "bonusToInviter": 3000,
+      "percent": 0.15
+    },
+    {
+      "level": 11,
+      "name": "Maverick",
+      "coins": 30000,
+      "bonusToInviter": 4500,
+      "percent": 0.15
+    },
+    {
+      "level": 12,
+      "name": "Hotshot",
+      "coins": 50000,
+      "bonusToInviter": 7500,
+      "percent": 0.15
+    },
+    {
+      "level": 13,
+      "name": "Millionare",
+      "coins": 75000,
+      "bonusToInviter": 7500,
+      "percent": 0.1
+    },
+    {
+      "level": 14,
+      "name": "Virtuoso",
+      "coins": 120000,
+      "bonusToInviter": 12000,
+      "percent": 0.1
+    },
+    {
+      "level": 15,
+      "name": "Magnate",
+      "coins": 200000,
+      "bonusToInviter": 20000,
+      "percent": 0.1
+    },
+    {
+      "level": 16,
+      "name": "Bigwig",
+      "coins": 400000,
+      "bonusToInviter": 40000,
+      "percent": 0.1
+    },
+    {
+      "level": 17,
+      "name": "Titan",
+      "coins": 1000000,
+      "bonusToInviter": 50000,
+      "percent": 0.05
+    },
+    {
+      "level": 18,
+      "name": "Billionaire",
+      "coins": 2500000,
+      "bonusToInviter": 125000,
+      "percent": 0.05
+    },
+    {
+      "level": 19,
+      "name": "Mogul",
+      "coins": 6000000,
+      "bonusToInviter": 180000,
+      "percent": 0.03
+    },
+    {
+      "level": 20,
+      "name": "Tycoon",
+      "coins": 15000000,
+      "bonusToInviter": 300000,
+      "percent": 0.02
+    }
+  ]
+}

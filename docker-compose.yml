@@ -1,0 +1,106 @@
+# version: '3.8'
+# services:
+#   core:
+#     container_name: weather-core
+#     build:
+#       context: .
+#       dockerfile: ./apps/core/Dockerfile
+#     env_file:
+#       - ./apps/core/.env
+#     ports:
+#       - '3000:3000'
+#     volumes:
+#       - .:/usr/src/app
+#       - /usr/src/app/node_modules
+#     command: 'yarn start:core:prod'
+#     restart: unless-stopped
+#   scheduler:
+#     container_name: weather-scheduler
+#     build:
+#       context: .
+#       dockerfile: ./apps/scheduler/Dockerfile
+#     env_file:
+#       - ./apps/scheduler/.env
+#     ports:
+#       - '3001:3001'
+#     volumes:
+#       - .:/usr/src/app
+#       - /usr/src/app/node_modules
+#     command: 'yarn start:scheduler:prod'
+#     restart: unless-stopped
+#   bot:
+#     container_name: weather-bot
+#     build:
+#       context: .
+#       dockerfile: ./apps/bot/Dockerfile
+#     env_file:
+#       - ./apps/bot/.env
+#     ports:
+#       - '3002:3002'
+#     volumes:
+#       - .:/usr/src/app
+#       - /usr/src/app/node_modules
+#     command: 'yarn start:bot:prod'
+#     restart: unless-stopped
+#   db:
+#     image: postgres
+#     environment:
+#       - POSTGRES_USER=postgres
+#       - POSTGRES_PASSWORD=postgress
+#       - POSTGRES_DB=weather-miners-core
+#     ports:
+#       - '5434:5432'
+#     volumes:
+#       - pgdata:/var/lib/postgresql/data
+# volumes:
+#   pgdata:
+
+version: "3.8"
+
+services:
+  be_app:
+    image: be-app:latest
+    container_name: be_app
+    env_file:
+      - .env
+    ports:
+      - "3001:3001"
+    networks:
+      - be-app-network
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:latest
+    container_name: app_postgres
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - be-app-network
+
+  redis:
+    image: redis:latest
+    container_name: app_redis
+    environment:
+      - REDIS_PASSWORD=myredispassword
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--requirepass", "myredispassword"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - be-app-network
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  be-app-network:
+    external: true

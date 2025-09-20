@@ -1,0 +1,75 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  email     String   @db.VarChar(255)
+  photoUrl  String?  @db.VarChar(255)
+  password  String   @db.VarChar(255) // Mã hash của mật khẩu
+  isBan     Boolean  @default(false)
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@map("users")
+}
+
+
+enum ValueType {
+  NUMBER
+  STRING
+  BOOLEAN
+}
+
+model Config {
+  key       String    @id @db.VarChar(255)
+  valueType ValueType
+  value     String    @db.Text
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("configs")
+}
+
+enum StatusLogAction {
+  INACTIVE
+  ACTIVE
+}
+
+model LogAction {
+  id        BigInt          @id @default(autoincrement())
+  url       String          @db.Text
+  method    String          @db.VarChar(10)
+  body      String          @db.Text
+  ip        String          @db.VarChar(45)
+  query     String          @db.Text
+  now       DateTime        @default(now())
+  data      String          @db.Text
+  timeCall  Int
+  status    StatusLogAction
+  userId    BigInt?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@map("log_actions")
+}
