@@ -57,3 +57,10 @@ export enum StatusLog {
 export enum Services {
   API_CORE = 'core',
 }
+
+export enum ItemMessage {
+  NOT_FOUND = 'This item not found',
+  FAIL_CREATE = 'Error while creating item',
+  FAIL_UPDATE = 'Error while updating item',
+  FAIL_DELETE = 'Error while deleting item',
+}

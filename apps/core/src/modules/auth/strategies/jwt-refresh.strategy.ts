@@ -5,7 +5,7 @@ import { Request } from 'express';
 import { Strategy } from 'passport-jwt';
 import { PrismaService } from 'libs/modules/prisma/prisma.service';
 import { TokenType } from 'libs/utils/enum';
-import { Role } from '@prisma/client';
+import { RoleType, Status } from '@prisma/client';
 import { CoreConfigService } from '../../config/core-config.service';
 import { ContextProvider } from 'libs/utils/providers/context.provider';
 
@@ -27,19 +27,19 @@ export class JwtRefreshStrategy extends PassportStrategy(
     });
   }
 
-  async validate(args: { userId: number; role: Role; type: TokenType }) {
-   
+  async validate(args: { userId: number; role: RoleType; type: TokenType }) {
+
     if (args.type !== TokenType.REFRESH_TOKEN) {
-      throw new ApiException('Unauthorize', HttpStatus.UNAUTHORIZED);
+      throw new ApiException('Unauthorize token', HttpStatus.UNAUTHORIZED);
     }
     const user = await this.prismaService.user.findFirst({
-      where: { id: args.userId, isBan: false },
+      where: { user_id: args.userId, status: Status.ACTIVE },
     });
 
     if (!user) {
-      throw new ApiException('Unauthorize', HttpStatus.UNAUTHORIZED);
+      throw new ApiException('Unauthorize user', HttpStatus.UNAUTHORIZED);
     }
-    
+
     ContextProvider.setAuthUser(user);
     return user;
   }

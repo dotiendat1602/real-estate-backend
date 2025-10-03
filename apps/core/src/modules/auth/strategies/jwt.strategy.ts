@@ -2,7 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ApiException } from 'libs/utils/exception';
-import { Role } from '@prisma/client';
+import { RoleType, Status } from '@prisma/client';
 import { PrismaService } from 'libs/modules/prisma/prisma.service';
 import { TokenType } from 'libs/utils/enum';
 import { CoreConfigService } from '../../config/core-config.service';
@@ -19,13 +19,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  async validate(args: { userId: number; role: Role; type: TokenType }) {
+  async validate(args: { email: string; role: RoleType; type: TokenType }) {
     if (args.type !== TokenType.ACCESS_TOKEN) {
       throw new ApiException('Unauthorize', HttpStatus.UNAUTHORIZED);
     }
 
     const user = await this.prismaService.user.findFirst({
-      where: { id: args.userId, isBan: false },
+      where: { email: args.email, status: Status.ACTIVE },
     });
 
     if (!user) {

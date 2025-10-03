@@ -1,22 +1,21 @@
 import {
-  IsEmail,
   IsNotEmpty,
   IsString,
   MaxLength,
   MinLength,
   Validate,
 } from 'class-validator';
-import { CustomValidateIsPassword } from 'libs/utils/pipes/validation.pipe';
 import { ApiProperty } from '@nestjs/swagger';
+import { CustomValidateIsPassword } from 'libs/utils/pipes/validation.pipe';
 
-export class CoreUserLoginDto {
+export class ResetPasswordDto {
   @ApiProperty({
-    description: 'User email address, should be a valid email format',
-    example: 'user@example.com',
+    description: 'Token to reset password',
+    example: 'eyadmasdasdadadl',
   })
   @IsNotEmpty()
-  @IsEmail()
-  email: string;
+  @IsString()
+  resetToken: string;
 
   @ApiProperty({
     description:
@@ -28,5 +27,5 @@ export class CoreUserLoginDto {
   @MinLength(6)
   @MaxLength(20)
   @Validate(CustomValidateIsPassword)
-  password: string;
+  newPassword: string;
 }

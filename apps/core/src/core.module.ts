@@ -25,9 +25,9 @@ const applications = [HealthModule, AuthModule, UserModule];
       exports: [CoreConfigService],
     }),
     ClsModule,
-    CacheModule,
-    RedlockModule,
-    QueueModule,
+    // CacheModule,
+    // RedlockModule,
+    // QueueModule,
     PrismaModule.forRootAsync({
       isGlobal: true,
       useFactory: () => {
