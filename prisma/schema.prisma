@@ -79,6 +79,40 @@ enum OtpPurpose {
   RESET_PASSWORD
 }
 
+enum AmenityCategory {
+  INTERIOR // Nội thất (máy lạnh, tủ âm tường...)
+  EXTERIOR // Ngoài trời/cảnh quan (ban công, sân vườn...)
+  SECURITY // An ninh (camera, thẻ từ...)
+  ACCESSIBILITY // Tiếp cận/khuyết tật (thang máy, ram dốc...)
+  COMMUNITY // Tiện ích cộng đồng (hồ bơi, phòng gym...)
+  PARKING // Đỗ xe (ô tô, xe máy, sạc EV...)
+  KITCHEN // Bếp (bếp âm, máy rửa chén...)
+  BATHROOM // Phòng tắm (bồn tắm, vách kính...)
+  ENTERTAINMENT // Giải trí (phòng chiếu, karaoke...)
+  ENERGY // Tiết kiệm năng lượng (solar, cách nhiệt...)
+  SMART_HOME // Nhà thông minh (khóa điện tử, cảm biến...)
+  PET_FRIENDLY // Thân thiện thú cưng
+  BUSINESS // Phù hợp kinh doanh (mặt tiền, biển hiệu...)
+}
+
+enum UtilityCategory {
+  COMMERCIAL_SHOPPING // TTTM/siêu thị/cửa hàng
+  HEALTHCARE // Bệnh viện/phòng khám/nhà thuốc
+  EDUCATION // Trường học/mẫu giáo
+  TRANSPORT // Bến xe/ga/tàu điện
+  PARK_PLAZA // Công viên/quảng trường
+  FINANCIAL // Ngân hàng/ATM
+  GOVERNMENT // Cơ quan hành chính
+  ENTERTAINMENT // Giải trí/rạp phim
+  DINING // Ăn uống/nhà hàng/quán
+  SPORTS // Thể thao/gyms/sân bãi
+  RELIGIOUS // Chùa/nhà thờ
+  FUEL // Cây xăng/sạc EV
+  ACCOMMODATION // Khách sạn/lưu trú
+  PARKING // Bãi đỗ xe
+  OTHER // Khác
+}
+
 // -------------------------------------------------------
 // USERS & RBAC
 // -------------------------------------------------------
@@ -227,9 +261,13 @@ model Ward {
 // CATEGORIES
 // -------------------------------------------------------
 
-model Category {
-  category_id   Int    @id @default(autoincrement())
-  category_name String @unique
+model PropertyCategory {
+  category_id          Int       @id @default(autoincrement())
+  category_name        String    @unique
+  category_description String?   @default("")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
 
   properties Property[]
 
@@ -266,21 +304,21 @@ model Property {
   province_id     Int?
   status          Status           @default(ACTIVE)
   createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   deletedAt       DateTime?
 
   // Relations
-  category Category  @relation(fields: [category_id], references: [category_id], onDelete: Restrict)
-  owner    User      @relation("PropertyOwner", fields: [owner_id], references: [user_id], onDelete: Restrict)
-  ward     Ward?     @relation(fields: [ward_id], references: [ward_id], onDelete: SetNull)
-  district District? @relation(fields: [district_id], references: [district_id], onDelete: SetNull)
-  province Province? @relation(fields: [province_id], references: [province_id], onDelete: SetNull)
+  category PropertyCategory @relation(fields: [category_id], references: [category_id], onDelete: Restrict)
+  owner    User             @relation("PropertyOwner", fields: [owner_id], references: [user_id], onDelete: Restrict)
+  ward     Ward?            @relation(fields: [ward_id], references: [ward_id], onDelete: SetNull)
+  district District?        @relation(fields: [district_id], references: [district_id], onDelete: SetNull)
+  province Province?        @relation(fields: [province_id], references: [province_id], onDelete: SetNull)
 
-  images    PropertyImage[]
-  amenities PropertyAmenity[]
-  posts     Post[]
-  deposits  Deposit[]
-  utilities Utility[]
+  images            PropertyImage[]
+  PropertyAmenities PropertyAmenity[]
+  posts             Post[]
+  deposits          Deposit[]
+  PropertyUtilities PropertyUtility[]
 
   @@index([status])
   @@index([province_id, district_id, ward_id])
@@ -310,9 +348,12 @@ model PropertyImage {
 // -------------------------------------------------------
 
 model Amenity {
-  amenity_id Int     @id @default(autoincrement())
-  name       String  @unique
-  category   String?
+  amenity_id Int              @id @default(autoincrement())
+  name       String           @unique
+  category   AmenityCategory?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  deletedAt  DateTime?
 
   properties PropertyAmenity[]
 
@@ -322,6 +363,7 @@ model Amenity {
 model PropertyAmenity {
   property_id Int
   amenity_id  Int
+  deletedAt   DateTime?
 
   property Property @relation(fields: [property_id], references: [property_id], onDelete: Cascade)
   amenity  Amenity  @relation(fields: [amenity_id], references: [amenity_id], onDelete: Cascade)
@@ -334,34 +376,45 @@ model PropertyAmenity {
 // UTILITIES (poi xung quanh)
 // -------------------------------------------------------
 
-model UtilityType {
-  utilityType_id Int    @id @default(autoincrement())
-  utility_name   String @unique
+model PropertyUtility {
+  property_id Int
+  utility_id  Int
 
-  utilities Utility[]
+  distance_m    Decimal? @db.Decimal(8, 2) // khoảng cách theo mét
+  travel_time_s Int? // thời gian di chuyển (giây)
+  is_primary    Boolean? @default(false)
+  note          String?
 
-  @@map("utility_type")
+  deletedAt DateTime?
+
+  property Property @relation(fields: [property_id], references: [property_id], onDelete: Cascade)
+  utility  Utility  @relation(fields: [utility_id], references: [utility_id], onDelete: Cascade)
+
+  @@id([property_id, utility_id])
+  @@index([utility_id])
+  @@map("property_utilities")
 }
 
 model Utility {
-  utility_id     Int      @id @default(autoincrement())
-  utilityType_id Int
-  utility_name   String?
-  lat            Decimal? @db.Decimal(9, 6)
-  lon            Decimal? @db.Decimal(9, 6)
-  location       String?
-  province_id    Int?
-  district_id    Int?
-  ward_id        Int?
+  utility_id       Int             @id @default(autoincrement())
+  utility_category UtilityCategory
+  utility_name     String?
+  lat              Decimal?        @db.Decimal(9, 6)
+  lon              Decimal?        @db.Decimal(9, 6)
+  location         String?
+  province_id      Int?
+  district_id      Int?
+  ward_id          Int?
+  deletedAt        DateTime?
 
-  type                UtilityType @relation(fields: [utilityType_id], references: [utilityType_id], onDelete: Restrict)
-  province            Province?   @relation(fields: [province_id], references: [province_id], onDelete: SetNull)
-  district            District?   @relation(fields: [district_id], references: [district_id], onDelete: SetNull)
-  ward                Ward?       @relation(fields: [ward_id], references: [ward_id], onDelete: SetNull)
-  Property            Property?   @relation(fields: [propertyProperty_id], references: [property_id])
-  propertyProperty_id Int?
+  // quan hệ địa lý giữ nguyên
+  province Province? @relation(fields: [province_id], references: [province_id], onDelete: SetNull)
+  district District? @relation(fields: [district_id], references: [district_id], onDelete: SetNull)
+  ward     Ward?     @relation(fields: [ward_id], references: [ward_id], onDelete: SetNull)
 
-  @@index([utilityType_id])
+  properties PropertyUtility[]
+
+  @@index([utility_category])
   @@index([province_id, district_id, ward_id])
   @@map("utilities")
 }
