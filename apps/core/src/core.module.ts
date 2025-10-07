@@ -16,6 +16,8 @@ import { PropertyCategoryModule } from './modules/property-category/property-cat
 import { PropertyModule } from './modules/property/property.module';
 import { AmenityModule } from './modules/amenity/amenity.module';
 import { PropertyUtilityModule } from './modules/property-utility/property-utility.module';
+import { LocationModule } from './modules/locations/location.module';
+import { PostModule } from './modules/post/post.module';
 
 const applications = [
   HealthModule,
@@ -25,6 +27,8 @@ const applications = [
   PropertyModule,
   AmenityModule,
   PropertyUtilityModule,
+  LocationModule,
+  PostModule,
 ];
 
 @Module({

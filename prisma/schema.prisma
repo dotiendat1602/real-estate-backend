@@ -430,10 +430,10 @@ model Post {
   postType     PostType?
   postContent  String?    @db.Text
   postStatus   PostStatus @default(DRAFT)
-  rejectReason String?
   approvedById Int?
   approvedAt   DateTime?
   rejectedById Int?
+  rejectReason String?
   publishedAt  DateTime?
   createdById  Int
   createdAt    DateTime   @default(now())
