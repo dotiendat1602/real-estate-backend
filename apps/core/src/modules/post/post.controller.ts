@@ -19,7 +19,7 @@ export class PostController {
   @Auth()
   @Get()
   @HttpCode(HttpStatus.OK)
-  async getAllPostsNotConfirm(
+  async getAllPosts(
     @Query() query: GetAllPostsDto,
   ) {
     return await this.postService.getAllPosts(query);

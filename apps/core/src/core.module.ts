@@ -18,6 +18,8 @@ import { AmenityModule } from './modules/amenity/amenity.module';
 import { PropertyUtilityModule } from './modules/property-utility/property-utility.module';
 import { LocationModule } from './modules/locations/location.module';
 import { PostModule } from './modules/post/post.module';
+import { AppointmentModule } from './modules/appoitment/appointment.module';
+import { DepositModule } from './modules/deposit/deposit.module';
 
 const applications = [
   HealthModule,
@@ -29,6 +31,8 @@ const applications = [
   PropertyUtilityModule,
   LocationModule,
   PostModule,
+  AppointmentModule,
+  DepositModule,
 ];
 
 @Module({

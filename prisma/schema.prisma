@@ -113,6 +113,13 @@ enum UtilityCategory {
   OTHER // Khác
 }
 
+enum AppointmentStatus {
+  SCHEDULED
+  RESCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
 // -------------------------------------------------------
 // USERS & RBAC
 // -------------------------------------------------------
@@ -317,7 +324,6 @@ model Property {
   images            PropertyImage[]
   PropertyAmenities PropertyAmenity[]
   posts             Post[]
-  deposits          Deposit[]
   PropertyUtilities PropertyUtility[]
 
   @@index([status])
@@ -483,7 +489,6 @@ model FavoriteList {
 model Deposit {
   deposit_id     Int           @id @default(autoincrement())
   post_id        Int
-  property_id    Int
   buyerId        Int
   sellerId       Int
   amount         Decimal       @db.Decimal(18, 2)
@@ -496,15 +501,13 @@ model Deposit {
   releasedAt     DateTime?
   note           String?       @db.Text
   createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  post     Post     @relation(fields: [post_id], references: [post_id], onDelete: Cascade)
-  property Property @relation(fields: [property_id], references: [property_id], onDelete: Cascade)
-  buyer    User     @relation("DepositBuyer", fields: [buyerId], references: [user_id], onDelete: Restrict)
-  seller   User     @relation("DepositSeller", fields: [sellerId], references: [user_id], onDelete: Restrict)
+  post   Post @relation(fields: [post_id], references: [post_id], onDelete: Cascade)
+  buyer  User @relation("DepositBuyer", fields: [buyerId], references: [user_id], onDelete: Restrict)
+  seller User @relation("DepositSeller", fields: [sellerId], references: [user_id], onDelete: Restrict)
 
   @@index([post_id])
-  @@index([property_id])
   @@index([buyerId])
   @@index([sellerId])
   @@index([status])
@@ -570,22 +573,25 @@ model Message {
 }
 
 model Appointment {
-  appointment_id Int      @id @default(autoincrement())
+  appointment_id Int                @id @default(autoincrement())
   post_id        Int
   buyerId        Int
-  agentId        Int
+  sellerId       Int
   scheduledAt    DateTime
   location       String?
-  status         String?
-  createdAt      DateTime @default(now())
+  status         AppointmentStatus? @default(SCHEDULED)
+  notes          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
 
-  post  Post @relation(fields: [post_id], references: [post_id], onDelete: Cascade)
-  buyer User @relation("ApptBuyer", fields: [buyerId], references: [user_id], onDelete: Restrict)
-  agent User @relation("ApptAgent", fields: [agentId], references: [user_id], onDelete: Restrict)
+  post   Post @relation(fields: [post_id], references: [post_id], onDelete: Cascade)
+  buyer  User @relation("ApptBuyer", fields: [buyerId], references: [user_id], onDelete: Restrict)
+  seller User @relation("ApptAgent", fields: [sellerId], references: [user_id], onDelete: Restrict)
 
   @@index([post_id])
   @@index([buyerId])
-  @@index([agentId])
+  @@index([sellerId])
   @@index([scheduledAt])
   @@map("appointments")
 }
