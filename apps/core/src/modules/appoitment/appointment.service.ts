@@ -22,7 +22,7 @@ export class AppointmentService {
   private ensureSort(orderKey?: string, sortOrder?: 'asc' | 'desc') {
     const key = orderKey && SORT_WHITELIST[orderKey] ? SORT_WHITELIST[orderKey] : 'createdAt';
     const order = sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : 'desc';
-    return { [key]: order } as Prisma.DepositOrderByWithRelationInput;
+    return { [key]: order } as Prisma.AppointmentOrderByWithRelationInput;
   }
 
   private async logAudit(
