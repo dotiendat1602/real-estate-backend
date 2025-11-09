@@ -322,7 +322,6 @@ export class PropertyService {
           }
         },
         posts: {},
-        deposits: {},
         PropertyUtilities: {
           select: {
             utility: {

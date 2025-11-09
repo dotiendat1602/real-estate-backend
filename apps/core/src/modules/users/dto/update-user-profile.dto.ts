@@ -9,4 +9,12 @@ export class UpdateUserProfileDto {
   @IsNotEmpty()
   @IsString()
   name: string;
+
+  @ApiProperty({
+    description: "Phone number of the user",
+    example: "+1234567890",
+  })
+  @IsNotEmpty()
+  @IsString()
+  phone: string;
 }

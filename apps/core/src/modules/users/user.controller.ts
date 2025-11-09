@@ -28,28 +28,28 @@ import { SystemPermissionType } from '@prisma/client';
 export class UserController {
   constructor(private readonly userService: UserService) { }
 
-  // @Auth()
+  @Auth()
   @Get('me')
   @HttpCode(HttpStatus.OK)
   async getMe() {
     return await this.userService.getUserInfo();
   }
 
-  // @Auth()
+  @Auth()
   @Patch('profile')
   @HttpCode(HttpStatus.OK)
   async updateProfile(@Body() dto: UpdateUserProfileDto) {
     return await this.userService.updateUserProfile(dto);
   }
 
-  // @Auth()
+  @Auth()
   @Patch('change-password')
   @HttpCode(HttpStatus.OK)
   async changePassword(@Body() dto: ChangePasswordDto) {
     return await this.userService.changePassword(dto);
   }
 
-  // @Auth([SystemPermissionType.MANAGE_USERS])
+  @Auth([SystemPermissionType.MANAGE_USERS])
   @Get()
   @HttpCode(HttpStatus.OK)
   async getAllUsers(
@@ -58,7 +58,7 @@ export class UserController {
     return await this.userService.getAllUsers(query);
   }
 
-  // @Auth([SystemPermissionType.MANAGE_USERS])
+  @Auth([SystemPermissionType.MANAGE_USERS])
   @Post()
   @HttpCode(HttpStatus.OK)
   async createUser(
@@ -67,7 +67,7 @@ export class UserController {
     return await this.userService.createUser(body);
   }
 
-  // @Auth([SystemPermissionType.MANAGE_USERS])
+  @Auth([SystemPermissionType.MANAGE_USERS])
   @Patch("/:userId")
   @HttpCode(HttpStatus.OK)
   async editUser(
@@ -77,7 +77,7 @@ export class UserController {
     return await this.userService.editUser(userId, body);
   }
 
-  // @Auth([SystemPermissionType.MANAGE_USERS])
+  @Auth([SystemPermissionType.MANAGE_USERS])
   @Delete("/:userId")
   @HttpCode(HttpStatus.OK)
   async deleteUser(

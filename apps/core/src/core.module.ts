@@ -20,6 +20,7 @@ import { LocationModule } from './modules/locations/location.module';
 import { PostModule } from './modules/post/post.module';
 import { AppointmentModule } from './modules/appoitment/appointment.module';
 import { DepositModule } from './modules/deposit/deposit.module';
+import { AuthorizationModule } from './modules/authorization/authorization.module';
 
 const applications = [
   HealthModule,
@@ -33,6 +34,7 @@ const applications = [
   PostModule,
   AppointmentModule,
   DepositModule,
+  AuthorizationModule,
 ];
 
 @Module({

@@ -52,6 +52,7 @@ export class PropertyCategoryService {
         category_id: true,
         category_name: true,
         category_description: true,
+        createdAt: true,
       }
     })
 

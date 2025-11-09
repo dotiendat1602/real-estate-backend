@@ -36,8 +36,36 @@ export class UserService {
   async getUserInfo() {
     const user = ContextProvider.getAuthUser<User>();
     // return user;
+    const userInfo = await this.prismaService.user.findFirst({
+      where: {
+        user_id: user.user_id,
+      },
+      select: {
+        user_id: true,
+        email: true,
+        name: true,
+        phone: true,
+        status: true,
+        roles: {
+          select: {
+            name: true,
+          }
+        }
+      }
+    });
+    if (!userInfo) {
+      throw new ApiException(
+        `User not found`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
     return {
-      ...user,
+      user_id: userInfo.user_id,
+      email: userInfo.email,
+      name: userInfo.name,
+      phone: userInfo.phone,
+      status: userInfo.status,
+      roles: userInfo.roles,
     };
   }
 
@@ -50,7 +78,20 @@ export class UserService {
       },
       data: {
         name: dto.name,
+        phone: dto.phone,
       },
+      select: {
+        user_id: true,
+        email: true,
+        name: true,
+        phone: true,
+        status: true,
+        roles: {
+          select: {
+            name: true,
+          }
+        }
+      }
     });
   }
 
@@ -65,6 +106,18 @@ export class UserService {
         data: {
           password: generateHash(dto.newPassword),
         },
+        select: {
+          user_id: true,
+          email: true,
+          name: true,
+          phone: true,
+          status: true,
+          roles: {
+            select: {
+              name: true,
+            }
+          }
+        }
       });
     }
     throw new ApiException(
