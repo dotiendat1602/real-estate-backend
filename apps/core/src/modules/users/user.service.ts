@@ -46,7 +46,7 @@ export class UserService {
         name: true,
         phone: true,
         status: true,
-        roles: {
+        role: {
           select: {
             name: true,
           }
@@ -65,7 +65,7 @@ export class UserService {
       name: userInfo.name,
       phone: userInfo.phone,
       status: userInfo.status,
-      roles: userInfo.roles,
+      role: userInfo.role,
     };
   }
 
@@ -86,7 +86,7 @@ export class UserService {
         name: true,
         phone: true,
         status: true,
-        roles: {
+        role: {
           select: {
             name: true,
           }
@@ -112,7 +112,7 @@ export class UserService {
           name: true,
           phone: true,
           status: true,
-          roles: {
+          role: {
             select: {
               name: true,
             }
@@ -160,6 +160,12 @@ export class UserService {
       where.status = pagingParams.status;
     }
 
+    if (pagingParams.role) {
+      where.role = {
+        name: pagingParams.role as RoleType,
+      }
+    }
+
     const users = await this.prismaService.user.findMany({
       where,
       orderBy: orderObject,
@@ -169,10 +175,11 @@ export class UserService {
         user_id: true,
         name: true,
         email: true,
+        phone: true,
         status: true,
         lastLogin: true,
         createdAt: true,
-        roles: {
+        role: {
           select: {
             name: true,
           }
@@ -202,6 +209,7 @@ export class UserService {
           data: {
             name: body.name,
             email: body.email,
+            phone: body.phoneNumber || null,
             password: generateHash(this.DEFAULT_PASSWORD),
             role_id: role.role_id,
           },
@@ -210,7 +218,7 @@ export class UserService {
             name: true,
             email: true,
             status: true,
-            roles: {
+            role: {
               select: {
                 name: true,
               }
@@ -231,6 +239,10 @@ export class UserService {
             user_id: existUser.user_id,
           },
           data: {
+            name: body.name,
+            phone: body.phoneNumber || null,
+            password: generateHash(this.DEFAULT_PASSWORD),
+            role_id: role.role_id,
             deletedAt: null,
           },
           select: {
@@ -238,7 +250,7 @@ export class UserService {
             name: true,
             email: true,
             status: true,
-            roles: {
+            role: {
               select: {
                 name: true,
               }
@@ -276,12 +288,34 @@ export class UserService {
       existRole = await this.checkExistRole(body.role);
     }
 
+    if (body.email && body.email !== existUser.email) {
+      const emailUsed = await this.prismaService.user.findFirst({
+        where: {
+          email: body.email,
+          deletedAt: null,
+          NOT: {
+            user_id: userId,
+          }
+        }
+      })
+
+      if (emailUsed) {
+        throw new ApiException(
+          `This email ${body.email} is already used by another user`,
+          HttpStatus.CONFLICT,
+          ErrorCode.INVALID_INPUT,
+        )
+      }
+    }
+
     try {
       const newUser = await this.prismaService.user.update({
         where: {
           user_id: userId,
         },
         data: {
+          email: body.email ?? existUser.email,
+          phone: body.phone ?? existUser.phone,
           name: body.name ?? existUser.name,
           role_id: existRole ? existRole.role_id : existUser.role_id,
           status: body.status ?? existUser.status,

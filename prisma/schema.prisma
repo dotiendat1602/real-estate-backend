@@ -134,11 +134,11 @@ model User {
   lastLogin DateTime?
   status    Status    @default(ACTIVE)
   createdAt DateTime  @default(now())
-  updatedAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
   deletedAt DateTime?
 
   // Relations
-  roles                Role                 @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+  role                 Role                 @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
   createdPosts         Post[]               @relation("PostCreatedBy")
   approvedPosts        Post[]               @relation("PostApprovedBy")
   rejectedPosts        Post[]               @relation("PostRejectedBy")
@@ -273,7 +273,7 @@ model PropertyCategory {
   category_name        String    @unique
   category_description String?   @default("")
   createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  updatedAt            DateTime  @default(now()) @updatedAt
   deletedAt            DateTime?
 
   properties Property[]
@@ -311,7 +311,7 @@ model Property {
   province_id     Int?
   status          Status           @default(ACTIVE)
   createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  updatedAt       DateTime         @default(now()) @updatedAt
   deletedAt       DateTime?
 
   // Relations
@@ -358,7 +358,7 @@ model Amenity {
   name       String           @unique
   category   AmenityCategory?
   createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  updatedAt  DateTime         @default(now()) @updatedAt
   deletedAt  DateTime?
 
   properties PropertyAmenity[]
@@ -443,7 +443,7 @@ model Post {
   publishedAt  DateTime?
   createdById  Int
   createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @default(now())
+  updatedAt    DateTime   @default(now()) @updatedAt
   deletedAt    DateTime?
 
   // Relations
@@ -501,7 +501,7 @@ model Deposit {
   releasedAt     DateTime?
   note           String?       @db.Text
   createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  updatedAt      DateTime      @default(now()) @updatedAt
 
   post   Post @relation(fields: [post_id], references: [post_id], onDelete: Cascade)
   buyer  User @relation("DepositBuyer", fields: [buyerId], references: [user_id], onDelete: Restrict)
@@ -518,16 +518,26 @@ model Deposit {
 // LEADS / CHAT / APPOINTMENTS
 // -------------------------------------------------------
 
+enum LeadStatus {
+  NEW // Mới tạo, chưa xử lý
+  CONTACTED // Đã liên hệ
+  FOLLOW_UP // Đang theo dõi / chờ phản hồi
+  NEGOTIATION // Đang thương lượng
+  CONVERTED // Đã chuyển đổi thành giao dịch
+  LOST // Mất lead / không tiềm năng
+  ARCHIVED // Lưu trữ, không hoạt động
+}
+
 model Lead {
-  lead_id   Int      @id @default(autoincrement())
+  lead_id   Int        @id @default(autoincrement())
   post_id   Int
   buyerId   Int?
   name      String?
   email     String?
   phone     String?
-  message   String?  @db.Text
-  status    String?
-  createdAt DateTime @default(now())
+  message   String?    @db.Text
+  status    LeadStatus @default(NEW)
+  createdAt DateTime   @default(now())
 
   post  Post  @relation(fields: [post_id], references: [post_id], onDelete: Cascade)
   buyer User? @relation("LeadBuyer", fields: [buyerId], references: [user_id], onDelete: SetNull)
@@ -582,7 +592,7 @@ model Appointment {
   status         AppointmentStatus? @default(SCHEDULED)
   notes          String?
   createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  updatedAt      DateTime           @default(now()) @updatedAt
   deletedAt      DateTime?
 
   post   Post @relation(fields: [post_id], references: [post_id], onDelete: Cascade)
@@ -600,14 +610,22 @@ model Appointment {
 // CONTENT / SEO / QA
 // -------------------------------------------------------
 
+enum ReportStatus {
+  PENDING // Báo cáo mới, chưa xử lý
+  UNDER_REVIEW // Đang được kiểm tra
+  ACTION_TAKEN // Đã xử lý (đã xóa bài, cảnh cáo, v.v.)
+  REJECTED // Báo cáo bị từ chối (không hợp lệ)
+  RESOLVED // Đã giải quyết hoàn tất
+}
+
 model Report {
-  report_id  Int      @id @default(autoincrement())
+  report_id  Int          @id @default(autoincrement())
   post_id    Int
   reporterId Int?
   reason     String?
-  detail     String?  @db.Text
-  status     String?
-  createdAt  DateTime @default(now())
+  detail     String?      @db.Text
+  status     ReportStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
 
   post     Post  @relation(fields: [post_id], references: [post_id], onDelete: Cascade)
   reporter User? @relation("ReportReporter", fields: [reporterId], references: [user_id], onDelete: SetNull)
@@ -675,7 +693,7 @@ model LogAction {
   status    StatusLogAction
   user_id   BigInt?
   createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  updatedAt DateTime        @default(now()) @updatedAt
 
   @@map("log_actions")
 }

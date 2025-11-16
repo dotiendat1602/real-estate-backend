@@ -62,19 +62,28 @@ export class AuthorizationService {
         orderBy: orderObject,
         skip: paging.skip,
         take: paging.take,
+        include: {
+          _count: {
+            select: {
+              roles: true,
+            }
+          }
+        }
       }),
       this.prismaService.permission.count({ where }),
     ]);
 
-    return returnPaging(permissions, total, paging);
+    const data = permissions.map(permission => ({
+      permission_id: permission.permission_id,
+      name: permission.name,
+      assignedRolesCount: permission._count.roles,
+    }));
+
+    return returnPaging(data, total, paging);
   }
 
   async getAllRolesPermissions(query: GetAllRolesPermissionsDto) {
     const paging = assignPaging(query);
-
-    const orderObject = {
-      [paging.sortKey || 'id']: paging.sortOrder || 'asc',
-    };
 
     const where: Prisma.RolesPermissionsWhereInput = {};
 
@@ -101,9 +110,22 @@ export class AuthorizationService {
     const [rolesPermissions, total] = await Promise.all([
       this.prismaService.rolesPermissions.findMany({
         where,
-        orderBy: orderObject,
         skip: paging.skip,
         take: paging.take,
+        select: {
+          role: {
+            select: {
+              role_id: true,
+              name: true,
+            }
+          },
+          permission: {
+            select: {
+              permission_id: true,
+              name: true,
+            }
+          }
+        }
       }),
       this.prismaService.rolesPermissions.count({ where }),
     ]);

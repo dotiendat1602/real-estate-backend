@@ -1,9 +1,17 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiPropertyOptional } from "@nestjs/swagger";
 import { RoleType, Status } from "@prisma/client";
-import { IsEnum, IsOptional, IsString } from "class-validator";
+import { IsEmail, IsEnum, IsOptional, IsString } from "class-validator";
 
 export class EditUsersDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
+    description: 'User email',
+    example: 'user@example.com',
+  })
+  @IsOptional()
+  @IsEmail()
+  email?: string
+
+  @ApiPropertyOptional({
     description: 'User name',
     example: 'user',
   })
@@ -11,7 +19,15 @@ export class EditUsersDto {
   @IsString()
   name?: string
 
-  @ApiProperty({
+  @ApiPropertyOptional({
+    description: 'User phone number',
+    example: '1234567890',
+  })
+  @IsOptional()
+  @IsString()
+  phone?: string
+
+  @ApiPropertyOptional({
     description: "User role, must be 'ADMIN' or 'USER'",
     example: 'ADMIN',
   })
@@ -19,7 +35,7 @@ export class EditUsersDto {
   @IsEnum(RoleType)
   role?: RoleType
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: "User status, must be 'ACTIVE' or 'INACTIVE'",
     example: 'ACTIVE',
   })

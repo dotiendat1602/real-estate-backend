@@ -34,7 +34,7 @@ export class AuthorizationController {
     return this.authorizationService.getAllPermissions(query);
   }
 
-  // Endpoint: GET /api/core/authorization/permissions
+  // Endpoint: GET /api/core/authorization/roles/permissions
   @Auth([SystemPermissionType.MANAGE_USERS])
   @Get("roles/permissions")
   async getRolePermission(
@@ -43,7 +43,7 @@ export class AuthorizationController {
     return this.authorizationService.getAllRolesPermissions(query);
   }
 
-  // Endpoint: POST /api/core/authorization/roles/:roleId/permissions
+  // Endpoint: POST /api/core/authorization/assign-permissions-to-role/:roleId
   @Auth([SystemPermissionType.MANAGE_USERS])
   @Post("assign-permissions-to-role/:roleId")
   async assignPermissionsToRole(
