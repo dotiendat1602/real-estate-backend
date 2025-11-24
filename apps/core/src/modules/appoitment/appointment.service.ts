@@ -100,6 +100,7 @@ export class AppointmentService {
       take: pagingParams.pageSize,
       skip: pagingParams.skip,
       select: {
+        appointment_id: true,
         post: {
           select: {
             post_id: true,
@@ -124,6 +125,8 @@ export class AppointmentService {
         location: true,
         status: true,
         notes: true,
+        createdAt: true,
+        updatedAt: true,
       }
     })
 

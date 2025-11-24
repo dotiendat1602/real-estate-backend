@@ -1,5 +1,5 @@
 {
-  "name": "Weather-Backend",
+  "name": "Real-Estate-Backend",
   "version": "0.0.1",
   "description": "",
   "author": "",
@@ -13,7 +13,6 @@
   "scripts": {
     "prepublish": "rimraf dist",
     "build:core": "nest build core",
-    "build:bot": "nest build bot",
     "build:scheduler": "nest build scheduler",
     "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
     "start:dev": "concurrently --kill-others-on-fail \"yarn start:bot:dev\" \"yarn start:core:dev\" \"yarn start:scheduler:dev\"",
@@ -30,7 +29,13 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./apps/core/test/jest-e2e.json"
+    "test:e2e": "jest --config ./apps/core/test/jest-e2e.json",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "db:seed": "ts-node ./prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "ts-node ./prisma/seed.ts"
   },
   "dependencies": {
     "@liaoliaots/nestjs-redis": "^9.0.5",

@@ -136,6 +136,11 @@ export class DepositService {
       skip: pagingParams.skip,
       take: pagingParams.pageSize,
       select: {
+        deposit_id: true,
+        amount: true,
+        status: true,
+        transactionRef: true,
+        holdExpiresAt: true,
         post: {
           select: {
             property: {
@@ -157,10 +162,8 @@ export class DepositService {
             phone: true,
           }
         },
-        amount: true,
-        status: true,
-        transactionRef: true,
-        holdExpiresAt: true,
+        createdAt: true,
+        updatedAt: true,
       }
     })
 

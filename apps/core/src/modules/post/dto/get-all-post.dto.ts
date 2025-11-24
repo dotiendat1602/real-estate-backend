@@ -33,12 +33,4 @@ export class GetAllPostsDto extends DefaultPaginationDto {
   @IsOptional()
   @IsEnum(PostStatus)
   status?: PostStatus
-
-  @ApiPropertyOptional({
-    description: "Filter by Post Mode",
-    example: "PENDING"
-  })
-  @IsOptional()
-  @IsEnum(PostMode)
-  mode?: PostMode
 }

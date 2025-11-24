@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { AppointmentStatus } from "@prisma/client";
-import { IsDate, IsEnum, IsOptional, IsString } from "class-validator";
+import { IsDateString, IsEnum, IsOptional, IsString } from "class-validator";
 
 export class UpdateAppointmentDto {
   @ApiPropertyOptional({
@@ -8,7 +8,7 @@ export class UpdateAppointmentDto {
     example: ""
   })
   @IsOptional()
-  @IsDate()
+  @IsDateString()
   scheduledAt?: Date
 
   @ApiPropertyOptional({

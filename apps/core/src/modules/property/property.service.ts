@@ -170,10 +170,10 @@ export class PropertyService {
     let wardId: number | undefined;
 
     // check province
-    if (pagingParams.province) {
-      const province = await this.prismaService.province.findFirst({
+    if (pagingParams.province_id) {
+      const province = await this.prismaService.province.findUnique({
         where: {
-          name: pagingParams.province,
+          province_id: pagingParams.province_id,
         },
         select: { province_id: true },
       });
@@ -189,10 +189,10 @@ export class PropertyService {
     }
 
     // check district
-    if (pagingParams.district) {
+    if (pagingParams.district_id) {
       const district = await this.prismaService.district.findFirst({
         where: {
-          name: pagingParams.district,
+          district_id: pagingParams.district_id,
           ...(provinceId ? { province_id: provinceId } : {}),
         },
         select: { district_id: true, province_id: true },
@@ -211,10 +211,10 @@ export class PropertyService {
     }
 
     // check ward
-    if (pagingParams.ward) {
+    if (pagingParams.ward_id) {
       const ward = await this.prismaService.ward.findFirst({
         where: {
-          name: pagingParams.ward,
+          ward_id: pagingParams.ward_id,
           ...(districtId ? { district_id: districtId } : {}),
         },
         select: { ward_id: true, district_id: true },
@@ -232,43 +232,74 @@ export class PropertyService {
       if (!districtId) where.district_id = ward.district_id;
     }
 
-    const properties = await this.prismaService.property.findMany({
-      where,
-      orderBy: orderObject,
-      skip: pagingParams.skip,
-      take: pagingParams.pageSize,
-      select: {
-        title: true,
-        description: true,
-        category: {
-          select: {
-            category_name: true,
-          }
-        },
-        area: true,
-        price: true,
-        location: true,
-        status: true,
-        createdAt: true,
-        owner: {
-          select: {
-            name: true,
-          }
-        },
-        images: {
-          select: {
-            image_id: true,
-            imageUrl: true,
-            isPrimary: true,
-          }
+    const [properties, total] = await Promise.all([
+      await this.prismaService.property.findMany({
+        where,
+        orderBy: orderObject,
+        skip: pagingParams.skip,
+        take: pagingParams.pageSize,
+        include: {
+          category: {
+            select: {
+              category_name: true,
+            }
+          },
+          owner: {
+            select: {
+              name: true,
+            }
+          },
+          ward: {
+            select: {
+              ward_id: true,
+              name: true,
+            }
+          },
+          district: {
+            select: {
+              district_id: true,
+              name: true,
+            }
+          },
+          province: {
+            select: {
+              province_id: true,
+              name: true,
+            }
+          },
+          images: {
+            select: {
+              image_id: true,
+              imageUrl: true,
+              isPrimary: true,
+            }
+          },
+          PropertyAmenities: {
+            select: {
+              amenity: {
+                select: {
+                  name: true,
+                  category: true,
+                }
+              }
+            }
+          },
+          posts: {},
+          PropertyUtilities: {
+            include: {
+              utility: {
+                select: {
+                  utility_name: true,
+                  utility_category: true,
+                }
+              }
+            }
+          },
         }
-      }
-    });
+      }),
 
-    const total = await this.prismaService.property.count({
-      where,
-    });
-
+      await this.prismaService.property.count({ where }),
+    ]);
     return returnPaging(properties, total, pagingParams);
   }
 
@@ -291,16 +322,19 @@ export class PropertyService {
         },
         ward: {
           select: {
+            ward_id: true,
             name: true,
           }
         },
         district: {
           select: {
+            district_id: true,
             name: true,
           }
         },
         province: {
           select: {
+            province_id: true,
             name: true,
           }
         },
@@ -323,7 +357,7 @@ export class PropertyService {
         },
         posts: {},
         PropertyUtilities: {
-          select: {
+          include: {
             utility: {
               select: {
                 utility_name: true,
@@ -462,7 +496,41 @@ export class PropertyService {
         const res = await this.prismaService.property.findFirst({
           where: { property_id: property.property_id },
           include: {
-            images: true,
+            category: {
+              select: {
+                category_name: true,
+              }
+            },
+            owner: {
+              select: {
+                name: true,
+              }
+            },
+            ward: {
+              select: {
+                ward_id: true,
+                name: true,
+              }
+            },
+            district: {
+              select: {
+                district_id: true,
+                name: true,
+              }
+            },
+            province: {
+              select: {
+                province_id: true,
+                name: true,
+              }
+            },
+            images: {
+              select: {
+                image_id: true,
+                imageUrl: true,
+                isPrimary: true,
+              }
+            },
             PropertyAmenities: {
               select: {
                 amenity: {
@@ -473,8 +541,9 @@ export class PropertyService {
                 }
               }
             },
+            posts: {},
             PropertyUtilities: {
-              select: {
+              include: {
                 utility: {
                   select: {
                     utility_name: true,
@@ -483,7 +552,7 @@ export class PropertyService {
                 }
               }
             },
-          },
+          }
         });
         return res;
       } catch (error) {
@@ -534,6 +603,64 @@ export class PropertyService {
           status: dto.status ?? existProperty.status,
           category_id: dto.category_id ?? existProperty.category_id,
         },
+        include: {
+          category: {
+            select: {
+              category_name: true,
+            }
+          },
+          owner: {
+            select: {
+              name: true,
+            }
+          },
+          ward: {
+            select: {
+              ward_id: true,
+              name: true,
+            }
+          },
+          district: {
+            select: {
+              district_id: true,
+              name: true,
+            }
+          },
+          province: {
+            select: {
+              province_id: true,
+              name: true,
+            }
+          },
+          images: {
+            select: {
+              image_id: true,
+              imageUrl: true,
+              isPrimary: true,
+            }
+          },
+          PropertyAmenities: {
+            select: {
+              amenity: {
+                select: {
+                  name: true,
+                  category: true,
+                }
+              }
+            }
+          },
+          posts: {},
+          PropertyUtilities: {
+            include: {
+              utility: {
+                select: {
+                  utility_name: true,
+                  utility_category: true,
+                }
+              }
+            }
+          },
+        }
       });
       return updatedProperty;
     } catch (error) {

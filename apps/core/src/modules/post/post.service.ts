@@ -38,21 +38,6 @@ export class PostService {
       deletedAt: null,
     }
 
-    const mode = (pagingParams.mode?.toUpperCase());
-    switch (mode) {
-      case 'PENDING':
-        Object.assign(where, { approvedAt: null, rejectedById: null });
-        break;
-      case 'APPROVED':
-        Object.assign(where, { approvedAt: { not: null } });
-        break;
-      case 'REJECTED':
-        Object.assign(where, { rejectedById: { not: null } });
-        break;
-      default:
-        break;
-    }
-
     if (pagingParams.search) {
       const q = pagingParams.search.trim();
       Object.assign(where, {
@@ -79,7 +64,13 @@ export class PostService {
             property_id: true,
             title: true,
             price: true,
-            images: true,
+            images: {
+              select: {
+                image_id: true,
+                imageUrl: true,
+                isPrimary: true,
+              }
+            },
           }
         },
         createdBy: {
@@ -128,6 +119,7 @@ export class PostService {
         HttpStatus.NOT_FOUND,
       )
     }
+    return existPost;
   }
 
   async createPost(dto: CreatePostDto) {

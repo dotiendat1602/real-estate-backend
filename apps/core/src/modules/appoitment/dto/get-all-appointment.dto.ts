@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { AppointmentStatus } from "@prisma/client";
-import { IsDate, IsEnum, IsOptional, IsString } from "class-validator";
+import { IsDateString, IsEnum, IsOptional, IsString } from "class-validator";
 import { DefaultPaginationDto } from "libs/utils/pagination/pagination.dto";
 
 export class GetAllAppointmentsDto extends DefaultPaginationDto {
@@ -16,14 +16,14 @@ export class GetAllAppointmentsDto extends DefaultPaginationDto {
     description: "Filter appointment by time meeting from",
   })
   @IsOptional()
-  @IsDate()
+  @IsDateString()
   date_from?: Date
 
   @ApiPropertyOptional({
     description: "Filter appointment by time meeting to",
   })
   @IsOptional()
-  @IsDate()
+  @IsDateString()
   date_to?: Date
 
   @ApiPropertyOptional({

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsDate, IsOptional, IsString } from "class-validator";
+import { IsDateString, IsOptional, IsString } from "class-validator";
 
 export class UpdateDepositDto {
   @ApiPropertyOptional({
@@ -7,7 +7,7 @@ export class UpdateDepositDto {
     example: "",
   })
   @IsOptional()
-  @IsDate()
+  @IsDateString()
   holdExpiresAt?: Date
 
   @ApiPropertyOptional({
