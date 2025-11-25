@@ -1,9 +1,9 @@
 import { CoreControllers } from "libs/utils/decorators/controller-customer.decorator";
 import { PostService } from "./post.service";
-import { Body, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from "@nestjs/common";
+import { Body, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
 import { Auth } from "libs/utils";
 import { GetAllPostsDto } from "./dto/get-all-post.dto";
-import { CreatePostDto } from "./dto/create-post.dto";
+import { CreatePostDto, UpdatePostDto } from "./dto/create-post.dto";
 import { RejectPostDto } from "./dto/reject-post.dto";
 
 @CoreControllers({
@@ -41,6 +41,16 @@ export class PostController {
     @Body() dto: CreatePostDto,
   ) {
     return await this.postService.createPost(dto);
+  }
+
+  @Auth()
+  @Patch(":postId")
+  @HttpCode(HttpStatus.OK)
+  async updatePost(
+    @Param('postId', ParseIntPipe) postId: number,
+    @Body() dto: UpdatePostDto,
+  ) {
+    return await this.postService.updatePost(postId, dto);
   }
 
   @Auth()

@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { PostStatus, PostType } from "@prisma/client";
 import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString } from "class-validator";
 
@@ -44,3 +44,5 @@ export class CreatePostDto {
   @IsEnum(PostStatus)
   postStatus: PostStatus
 }
+
+export class UpdatePostDto extends PartialType(CreatePostDto) { }

@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { PrismaService } from "libs/modules/prisma/prisma.service";
 import { GetAllPostsDto } from "./dto/get-all-post.dto";
-import { CreatePostDto } from "./dto/create-post.dto";
+import { CreatePostDto, UpdatePostDto } from "./dto/create-post.dto";
 import { assignPaging, returnPaging } from "libs/utils/helpers";
 import { PostStatus, Prisma, User } from "@prisma/client";
 import { ApiException } from "libs/utils/exception";
@@ -161,6 +161,64 @@ export class PostService {
     } catch (error) {
       throw new ApiException(
         `${ItemMessage.FAIL_CREATE}: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      )
+    }
+  }
+
+  async updatePost(postId: number, dto: UpdatePostDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new ApiException(
+        "UNAUTHORIZED",
+        HttpStatus.UNAUTHORIZED,
+      )
+    }
+
+    const existPost = await this.prismaService.post.findFirst({
+      where: {
+        post_id: postId,
+        deletedAt: null,
+      },
+    })
+    if (!existPost) {
+      throw new ApiException(
+        `${ItemMessage.NOT_FOUND}: Post #id${postId}`,
+        HttpStatus.NOT_FOUND,
+      )
+    }
+
+    try {
+      const updatedPost = await this.prismaService.$transaction(async (prisma) => {
+        const post = await prisma.post.update({
+          where: { post_id: postId },
+          data: {
+            property_id: dto.property_id ?? existPost.property_id,
+            postTitle: dto.postTitle ?? existPost.postTitle,
+            postContent: dto.postContent ?? existPost.postContent,
+            postType: dto.postType ?? existPost.postType,
+            postStatus: dto.postStatus ?? existPost.postStatus,
+            updatedAt: new Date(),
+          },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            user_id: user.user_id,
+            action: 'UPDATE_POST',
+            entity: 'Post',
+            entityId: postId,
+            payload: { ...dto },
+          },
+        });
+
+        return post;
+      });
+
+      return updatedPost;
+    } catch (error) {
+      throw new ApiException(
+        `${ItemMessage.FAIL_UPDATE}: Post #id${postId}, error ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       )
     }

@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class HttpLoggerInterceptor implements NestInterceptor {
-  constructor(private readonly loggerService: LoggerService) {}
+  constructor(private readonly loggerService: LoggerService) { }
   intercept(
     executionContext: ExecutionContext,
     next: CallHandler,
@@ -27,7 +27,11 @@ export class HttpLoggerInterceptor implements NestInterceptor {
       request.id = request.headers.traceId;
     }
 
-    this.loggerService.pino(request, response);
+    const contentType = (request.headers['content-type'] || '').toLowerCase();
+    if (!contentType.startsWith('multipart/form-data')) {
+      this.loggerService.pino(request, response);
+    }
+
     return next.handle();
   }
 }
