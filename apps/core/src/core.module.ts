@@ -21,6 +21,8 @@ import { PostModule } from './modules/post/post.module';
 import { AppointmentModule } from './modules/appoitment/appointment.module';
 import { DepositModule } from './modules/deposit/deposit.module';
 import { AuthorizationModule } from './modules/authorization/authorization.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { SocketModule } from './socket/socket.module';
 
 const applications = [
   HealthModule,
@@ -35,6 +37,7 @@ const applications = [
   AppointmentModule,
   DepositModule,
   AuthorizationModule,
+  ChatModule,
 ];
 
 @Module({
@@ -50,6 +53,7 @@ const applications = [
     // CacheModule,
     // RedlockModule,
     // QueueModule,
+    SocketModule,
     PrismaModule.forRootAsync({
       isGlobal: true,
       useFactory: () => {

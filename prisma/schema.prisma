@@ -549,11 +549,13 @@ model Lead {
 }
 
 model Conversation {
-  conversation_id Int      @id @default(autoincrement())
+  conversation_id Int       @id @default(autoincrement())
   post_id         Int?
   buyerId         Int?
   agentId         Int?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime? @updatedAt
+  deletedAt       DateTime?
 
   post  Post? @relation(fields: [post_id], references: [post_id], onDelete: SetNull)
   buyer User? @relation("ConvBuyer", fields: [buyerId], references: [user_id], onDelete: SetNull)
@@ -561,6 +563,7 @@ model Conversation {
 
   messages Message[]
 
+  @@unique([post_id, buyerId, agentId])
   @@index([post_id])
   @@index([buyerId])
   @@index([agentId])
@@ -568,11 +571,13 @@ model Conversation {
 }
 
 model Message {
-  message_id      Int      @id @default(autoincrement())
+  message_id      Int       @id @default(autoincrement())
   conversation_id Int
   senderId        Int
-  content         String?  @db.Text
-  createdAt       DateTime @default(now())
+  content         String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime? @updatedAt
+  deletedAt       DateTime?
 
   conversation Conversation @relation(fields: [conversation_id], references: [conversation_id], onDelete: Cascade)
   sender       User         @relation("MsgSender", fields: [senderId], references: [user_id])
