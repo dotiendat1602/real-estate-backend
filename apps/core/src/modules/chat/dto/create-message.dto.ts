@@ -3,14 +3,6 @@ import { IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
 
 export class CreateMessageDto {
   @ApiProperty({
-    description: 'ID của cuộc trò chuyện',
-    example: 1,
-  })
-  @IsInt()
-  @Min(1)
-  conversationId: number;
-
-  @ApiProperty({
     description: 'ID người gửi (buyer/agent)',
     example: 2,
   })

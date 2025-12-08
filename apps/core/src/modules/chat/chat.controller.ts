@@ -16,8 +16,13 @@ import { SendManagerReplyAsAgentDto } from './dto/send-manager-reply-as-agent.dt
 import { Auth } from 'libs/utils';
 import { GetAllConversationsDto } from './dto/get-all-conversations.dto';
 import { GetAllMessagesOfConversationDto } from './dto/get-all-messages-conversation.dto';
+import { CoreControllers } from 'libs/utils/decorators/controller-customer.decorator';
 
-@Controller('chat')
+@CoreControllers({
+  path: 'chat',
+  version: '1',
+  tag: 'Chat',
+})
 export class ChatController {
   constructor(
     private readonly messageService: MessageService,
@@ -60,6 +65,7 @@ export class ChatController {
   /**
    * Manager reply as agent trong conversation
    */
+  @Auth()
   @Post('conversations/:conversationId/reply-as-agent')
   async managerReplyAsAgent(
     @Param('conversationId', ParseIntPipe) conversationId: number,
@@ -71,6 +77,7 @@ export class ChatController {
   /**
    * Lấy danh sách message của 1 conversation
    */
+  @Auth()
   @Get('conversations/:conversationId/messages')
   async getAllMessagesOfConversation(
     @Param('conversationId', ParseIntPipe) conversationId: number,
@@ -82,6 +89,7 @@ export class ChatController {
   /**
    * Lấy thông tin conversation
    */
+  @Auth()
   @Get('conversations/:conversationId')
   async getConversation(
     @Param('conversationId', ParseIntPipe) conversationId: number,

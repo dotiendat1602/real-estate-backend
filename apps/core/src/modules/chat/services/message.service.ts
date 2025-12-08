@@ -189,7 +189,7 @@ export class MessageService {
         },
         skip: paging.skip,
         take: paging.take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'asc' },
       }),
       this.prisma.message.count({ where: { conversation_id: conversationId, deletedAt: null } }),
     ]);
