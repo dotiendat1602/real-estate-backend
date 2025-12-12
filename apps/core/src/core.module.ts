@@ -23,6 +23,7 @@ import { DepositModule } from './modules/deposit/deposit.module';
 import { AuthorizationModule } from './modules/authorization/authorization.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { SocketModule } from './socket/socket.module';
+import { LeadModule } from './modules/lead/lead.module';
 
 const applications = [
   HealthModule,
@@ -38,6 +39,7 @@ const applications = [
   DepositModule,
   AuthorizationModule,
   ChatModule,
+  LeadModule,
 ];
 
 @Module({

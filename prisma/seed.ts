@@ -19,7 +19,7 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Start seeding...');
+  console.log('Start seeding...');
 
   // -------------------------------------------------------
   // 1. Seed Permissions
@@ -33,7 +33,7 @@ async function main() {
       create: { name: perm },
     });
   }
-  console.log('✅ Seeded permissions');
+  console.log('Seeded permissions');
 
   const allPermissions = await prisma.permission.findMany();
 
@@ -56,6 +56,10 @@ async function main() {
       description: 'Branch / team manager - limited management',
     },
     {
+      name: RoleType.AGENT,
+      description: 'Agent / broker - handle posts, leads, chat, appointments',
+    },
+    {
       name: RoleType.USER,
       description: 'Normal user - basic usage',
     },
@@ -73,7 +77,7 @@ async function main() {
       },
     });
   }
-  console.log('✅ Seeded roles');
+  console.log('Seeded roles');
 
   const adminRole = await prisma.role.findUnique({
     where: { name: RoleType.ADMIN },
@@ -81,11 +85,14 @@ async function main() {
   const managerRole = await prisma.role.findUnique({
     where: { name: RoleType.MANAGER },
   });
+  const agentRole = await prisma.role.findUnique({
+    where: { name: RoleType.AGENT },
+  });
   const userRole = await prisma.role.findUnique({
     where: { name: RoleType.USER },
   });
 
-  if (!adminRole || !managerRole || !userRole) {
+  if (!adminRole || !managerRole || !agentRole || !userRole) {
     throw new Error('Some roles not found after seeding');
   }
 
@@ -102,9 +109,23 @@ async function main() {
     SystemPermissionType.MANAGE_CATEGORY,
     SystemPermissionType.MANAGE_AMENITIES,
     SystemPermissionType.MANAGE_PAYMENT,
+    SystemPermissionType.MANAGE_LEADS,
+    SystemPermissionType.MANAGE_CHAT,
+    SystemPermissionType.MANAGE_APPOINTMENT,
   ];
   const managerPermissionIds = managerPermissionEnums.map(getPermissionId);
 
+  const agentPermissionEnums: SystemPermissionType[] = [
+    SystemPermissionType.MANAGE_PROPERTY,
+    SystemPermissionType.MANAGE_POST,
+    SystemPermissionType.MANAGE_LEADS,
+    SystemPermissionType.MANAGE_CHAT,
+    SystemPermissionType.MANAGE_APPOINTMENT,
+  ];
+  const agentPermissionIds = agentPermissionEnums.map(getPermissionId);
+
+  // USER: tuỳ business, bạn có thể giảm quyền (hiện seed bạn đang cho khá mạnh).
+  // Mình giữ nguyên theo seed gốc của bạn để tránh thay đổi behavior.
   const userPermissionEnums: SystemPermissionType[] = [
     SystemPermissionType.MANAGE_PROPERTY,
     SystemPermissionType.MANAGE_POST,
@@ -134,12 +155,13 @@ async function main() {
 
   await assignPermissionsToRole(adminRole.role_id, adminPermissionIds);
   await assignPermissionsToRole(managerRole.role_id, managerPermissionIds);
+  await assignPermissionsToRole(agentRole.role_id, agentPermissionIds);
   await assignPermissionsToRole(userRole.role_id, userPermissionIds);
 
-  console.log('✅ Assigned permissions to roles');
+  console.log('Assigned permissions to roles');
 
   // -------------------------------------------------------
-  // 4. Users: admin + 1 user thường
+  // 4. Users: admin + 1 agent + 1 user thường
   // -------------------------------------------------------
   const adminEmail = 'admin@example.com';
 
@@ -152,6 +174,21 @@ async function main() {
       password: bcrypt.hashSync('Password@123', 10),
       phone: '0900000000',
       role_id: adminRole.role_id,
+      status: Status.ACTIVE,
+    },
+  });
+
+  const agentEmail = 'agent@example.com';
+
+  const agentUser = await prisma.user.upsert({
+    where: { email: agentEmail },
+    update: {},
+    create: {
+      email: agentEmail,
+      name: 'Default Agent',
+      password: bcrypt.hashSync('Password@123', 10),
+      phone: '0900000002',
+      role_id: agentRole.role_id,
       status: Status.ACTIVE,
     },
   });
@@ -171,7 +208,7 @@ async function main() {
     },
   });
 
-  console.log('✅ Seeded users');
+  console.log('Seeded users');
 
   // -------------------------------------------------------
   // 5. Property Categories
@@ -215,7 +252,7 @@ async function main() {
     throw new Error('Some property categories not found');
   }
 
-  console.log('✅ Seeded property categories');
+  console.log('Seeded property categories');
 
   // -------------------------------------------------------
   // 6. Seed Location: Province / District / Ward
@@ -253,7 +290,7 @@ async function main() {
     });
   }
 
-  console.log('✅ Seeded location (HCM - Q1 - P. Bến Nghé)');
+  console.log('Seeded location (HCM - Q1 - P. Bến Nghé)');
 
   // -------------------------------------------------------
   // 7. Seed Amenities
@@ -285,7 +322,7 @@ async function main() {
   }
 
   const amenities = await prisma.amenity.findMany();
-  console.log('✅ Seeded amenities');
+  console.log('Seeded amenities');
 
   // -------------------------------------------------------
   // 8. Seed Utilities (POI xung quanh)
@@ -375,7 +412,7 @@ async function main() {
     utilities.push(created);
   }
 
-  console.log('✅ Seeded utilities');
+  console.log('Seeded utilities');
 
   // -------------------------------------------------------
   // 9. Seed Properties
@@ -468,10 +505,10 @@ async function main() {
     });
   }
 
-  console.log('✅ Seeded properties');
+  console.log('Seeded properties');
 
   // -------------------------------------------------------
-  // 10. Seed PropertyAmenities (gắn tiện ích cho property)
+  // 10. Seed PropertyAmenities
   // -------------------------------------------------------
   const findAmenity = (name: string) =>
     amenities.find((a) => a.name === name);
@@ -532,10 +569,10 @@ async function main() {
     });
   }
 
-  console.log('✅ Seeded property amenities');
+  console.log('Seeded property amenities');
 
   // -------------------------------------------------------
-  // 11. Seed PropertyUtilities (gắn POI xung quanh)
+  // 11. Seed PropertyUtilities
   // -------------------------------------------------------
   const apartmentUtilityPairs = [
     {
@@ -610,7 +647,7 @@ async function main() {
     });
   }
 
-  console.log('✅ Seeded property utilities');
+  console.log('Seeded property utilities');
 
   // -------------------------------------------------------
   // 12. Seed Posts demo + Slugs + Leads + Conversations
@@ -644,7 +681,7 @@ async function main() {
         approvedById: adminUser.user_id,
         approvedAt: now,
         publishedAt: now,
-        createdById: adminUser.user_id,
+        createdById: agentUser.user_id,
       },
     });
   }
@@ -664,7 +701,7 @@ async function main() {
         postContent:
           'Cho thuê căn hộ 2 phòng ngủ, nội thất cơ bản, free sử dụng hồ bơi và phòng gym. Phù hợp gia đình trẻ hoặc chuyên gia nước ngoài.',
         postStatus: PostStatus.PENDING,
-        createdById: normalUser.user_id,
+        createdById: agentUser.user_id,
       },
     });
   }
@@ -684,12 +721,12 @@ async function main() {
         postContent:
           'Bài viết nháp cho nhà phố mặt tiền, sẽ cập nhật đầy đủ thông tin sau.',
         postStatus: PostStatus.DRAFT,
-        createdById: normalUser.user_id,
+        createdById: agentUser.user_id,
       },
     });
   }
 
-  console.log('✅ Seeded posts demo');
+  console.log('Seeded posts demo');
 
   // -------------------------------------------------------
   // 13. Seed PostSlug cho các bài
@@ -726,10 +763,10 @@ async function main() {
     true,
   );
 
-  console.log('✅ Seeded post slugs');
+  console.log('Seeded post slugs');
 
   // -------------------------------------------------------
-  // 14. Seed Lead demo (liên hệ từ buyer cho bài bán căn hộ)
+  // 14. Seed Lead demo
   // -------------------------------------------------------
   let lead1 = await prisma.lead.findFirst({
     where: {
@@ -753,7 +790,7 @@ async function main() {
     });
   }
 
-  console.log('✅ Seeded lead demo');
+  console.log('Seeded lead demo');
 
   // -------------------------------------------------------
   // 15. Seed Conversation + Messages demo
@@ -762,7 +799,7 @@ async function main() {
     where: {
       post_id: postApartmentSale.post_id,
       buyerId: normalUser.user_id,
-      agentId: adminUser.user_id,
+      agentId: agentUser.user_id,
     },
   });
 
@@ -771,7 +808,7 @@ async function main() {
       data: {
         post_id: postApartmentSale.post_id,
         buyerId: normalUser.user_id,
-        agentId: adminUser.user_id,
+        agentId: agentUser.user_id,
       },
     });
   }
@@ -791,7 +828,7 @@ async function main() {
         },
         {
           conversation_id: conversation1.conversation_id,
-          senderId: adminUser.user_id,
+          senderId: agentUser.user_id,
           content:
             'Chào bạn, căn hộ vẫn còn nhé. Bạn muốn xem nhà vào khung giờ nào?',
         },
@@ -804,21 +841,20 @@ async function main() {
     });
   }
 
-  console.log('✅ Seeded conversation + messages demo');
+  console.log('Seeded conversation + messages demo');
 
   // -------------------------------------------------------
-  // 16. Seed Appointment demo (lịch hẹn xem nhà)
+  // 16. Seed Appointment demo
   // -------------------------------------------------------
   let appointment1 = await prisma.appointment.findFirst({
     where: {
       post_id: postApartmentSale.post_id,
       buyerId: normalUser.user_id,
-      sellerId: adminUser.user_id,
+      agentId: agentUser.user_id,
     },
   });
 
   if (!appointment1) {
-    // lịch hẹn sau thời điểm seed 2 ngày, 10h sáng
     const scheduledAt = new Date();
     scheduledAt.setDate(scheduledAt.getDate() + 2);
     scheduledAt.setHours(10, 0, 0, 0);
@@ -827,7 +863,7 @@ async function main() {
       data: {
         post_id: postApartmentSale.post_id,
         buyerId: normalUser.user_id,
-        sellerId: adminUser.user_id,
+        agentId: agentUser.user_id,
         scheduledAt,
         location: 'Sảnh tiếp tân tòa nhà căn hộ Quận 1',
         status: AppointmentStatus.SCHEDULED,
@@ -836,10 +872,10 @@ async function main() {
     });
   }
 
-  console.log('✅ Seeded appointment demo');
+  console.log('Seeded appointment demo');
 
   // -------------------------------------------------------
-  // 17. Seed Deposit demo (đặt cọc cho bài bán căn hộ)
+  // 17. Seed Deposit demo
   // -------------------------------------------------------
   const transactionRef = 'DEMO-DEP-0001';
 
@@ -852,7 +888,7 @@ async function main() {
       data: {
         post_id: postApartmentSale.post_id,
         buyerId: normalUser.user_id,
-        sellerId: adminUser.user_id,
+        sellerId: adminUser.user_id, // seller/owner (tuỳ nghiệp vụ)
         amount: new Prisma.Decimal('500000000.00'),
         status: DepositStatus.CONFIRMED,
         provider: 'DemoPay',
@@ -865,14 +901,14 @@ async function main() {
     });
   }
 
-  console.log('✅ Seeded deposit demo');
+  console.log('Seeded deposit demo');
 
-  console.log('🎉 Seeding finished.');
+  console.log('Seeding finished.');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Seeding error:', e);
+    console.error('Seeding error:', e);
     process.exit(1);
   })
   .finally(async () => {
