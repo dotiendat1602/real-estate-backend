@@ -14,9 +14,10 @@ import { CoreControllers } from 'libs/utils/decorators/controller-customer.decor
 import { Auth } from 'libs/utils';
 import { SystemPermissionType } from '@prisma/client';
 import { CreateLeadDto } from './dto/create-lead.dto';
-import { AssignLeadDto, UpdateLeadDto } from './dto/update-lead.dto';
+import { AssignLeadDto, UpdateLeadDto, UpdateLeadStatusDto } from './dto/update-lead.dto';
 import { LeadService } from './services/lead.service';
 import { GetAllLeadsDto } from './dto/get-all-leads.dto';
+import { GetMyLeadsDto } from './dto/get-my-leads.dto';
 
 @CoreControllers({
   path: 'leads',
@@ -58,6 +59,16 @@ export class LeadController {
   }
 
   @Auth([SystemPermissionType.MANAGE_LEADS])
+  @Patch(':leadId/status')
+  @HttpCode(HttpStatus.OK)
+  async updateStatus(
+    @Param('leadId', ParseIntPipe) leadId: number,
+    @Body() body: UpdateLeadStatusDto,
+  ) {
+    return await this.leadService.updateStatus(leadId, body.status);
+  }
+
+  @Auth([SystemPermissionType.MANAGE_LEADS])
   @Patch(':leadId/assign')
   @HttpCode(HttpStatus.OK)
   async assignLead(
@@ -72,5 +83,15 @@ export class LeadController {
   @HttpCode(HttpStatus.OK)
   async deleteLead(@Param('leadId', ParseIntPipe) leadId: number) {
     return await this.leadService.deleteLead(leadId);
+  }
+
+  // For user
+  @Auth()
+  @Get('me')
+  @HttpCode(HttpStatus.OK)
+  async getMyLeads(
+    @Query() query: GetMyLeadsDto,
+  ) {
+    return await this.leadService.getMyLeads(query);
   }
 }

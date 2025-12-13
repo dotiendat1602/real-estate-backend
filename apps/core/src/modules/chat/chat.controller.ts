@@ -17,6 +17,7 @@ import { Auth } from 'libs/utils';
 import { GetAllConversationsDto } from './dto/get-all-conversations.dto';
 import { GetAllMessagesOfConversationDto } from './dto/get-all-messages-conversation.dto';
 import { CoreControllers } from 'libs/utils/decorators/controller-customer.decorator';
+import { SystemPermissionType } from '@prisma/client';
 
 @CoreControllers({
   path: 'chat',
@@ -29,7 +30,7 @@ export class ChatController {
     private readonly conversationService: ConversationService,
   ) { }
 
-  @Auth()
+  @Auth([SystemPermissionType.MANAGE_CHAT])
   @Get('conversations')
   async getAllConversations(
     @Query() query: GetAllConversationsDto,
@@ -41,7 +42,6 @@ export class ChatController {
    * Buyer nhắn cho 1 post + 1 agent
    * -> auto create/get conversation + tạo message
    * Body: { postId, buyerId, agentId, content }
-   * (sau này có thể bỏ buyerId và lấy từ token)
    */
   @Auth()
   @Post('buyer/send-first-message')
@@ -77,7 +77,7 @@ export class ChatController {
   /**
    * Lấy danh sách message của 1 conversation
    */
-  @Auth()
+  @Auth([SystemPermissionType.MANAGE_CHAT])
   @Get('conversations/:conversationId/messages')
   async getAllMessagesOfConversation(
     @Param('conversationId', ParseIntPipe) conversationId: number,
@@ -89,11 +89,30 @@ export class ChatController {
   /**
    * Lấy thông tin conversation
    */
-  @Auth()
+  @Auth([SystemPermissionType.MANAGE_CHAT])
   @Get('conversations/:conversationId')
   async getConversation(
     @Param('conversationId', ParseIntPipe) conversationId: number,
   ) {
     return this.conversationService.getById(conversationId);
+  }
+
+  // For user, agent
+  @Auth()
+  @Get('me/conversations')
+  async getUserConversations(
+    @Query() query: GetAllConversationsDto,
+  ) {
+    return this.conversationService.getUserConversations(query);
+  }
+
+  // Get messages of a user's conversation
+  @Auth()
+  @Get('me/conversations/:conversationId/messages')
+  async getUserConversationMessages(
+    @Param('conversationId', ParseIntPipe) conversationId: number,
+    @Query() query: GetAllMessagesOfConversationDto,
+  ) {
+    return this.messageService.getUserConversationMessages(conversationId, query);
   }
 }

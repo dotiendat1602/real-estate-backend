@@ -16,6 +16,15 @@ export class AmenityController {
     private readonly amenityService: AmenityService,
   ) { }
 
+  // Endpoint: GET /api/core/v1/amenity/meta-data
+  @Get('meta-data')
+  @HttpCode(HttpStatus.OK)
+  async getAllAmenityMetaData(
+    @Query('category') category?: string,
+  ) {
+    return this.amenityService.getAllAmenityMetaData(category);
+  }
+
   @Auth()
   @Get()
   @HttpCode(HttpStatus.OK)

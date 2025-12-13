@@ -42,7 +42,7 @@ export class GetAllPropertyDto extends DefaultPaginationDto {
   })
   @IsOptional()
   @IsNumber()
-  province_id?: number
+  provinceId?: number
 
   @ApiPropertyOptional({
     description: 'Search by district',
@@ -50,7 +50,7 @@ export class GetAllPropertyDto extends DefaultPaginationDto {
   })
   @IsOptional()
   @IsNumber()
-  district_id?: number
+  districtId?: number
 
   @ApiPropertyOptional({
     description: 'Search by ward',
@@ -58,5 +58,5 @@ export class GetAllPropertyDto extends DefaultPaginationDto {
   })
   @IsOptional()
   @IsNumber()
-  ward_id?: number
+  wardId?: number
 }

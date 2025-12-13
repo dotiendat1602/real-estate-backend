@@ -33,7 +33,7 @@ export class JwtRefreshStrategy extends PassportStrategy(
       throw new ApiException('Unauthorize token', HttpStatus.UNAUTHORIZED);
     }
     const user = await this.prismaService.user.findFirst({
-      where: { user_id: args.userId, status: Status.ACTIVE },
+      where: { id: args.userId, status: Status.ACTIVE },
     });
 
     if (!user) {

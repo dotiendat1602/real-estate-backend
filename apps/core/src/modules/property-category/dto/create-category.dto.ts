@@ -8,7 +8,7 @@ export class CreatePropertyCategoryDto {
   })
   @IsNotEmpty()
   @IsString()
-  category_name: string
+  categoryName: string
 
   @ApiProperty({
     description: "Description of the property's category",
@@ -16,5 +16,5 @@ export class CreatePropertyCategoryDto {
   })
   @IsOptional()
   @IsString()
-  category_description: string
+  categoryDescription: string
 }

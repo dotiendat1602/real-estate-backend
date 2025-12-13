@@ -4,7 +4,7 @@ import { GetAllAmenityDto } from "./dto/get-all-amenity.dto";
 import { assignPaging, returnPaging } from "libs/utils/helpers";
 import { CreateAmenityDto } from "./dto/create-amenity.dto";
 import { UpdateAmenityDto } from "./dto/update-amenity.dto";
-import { Prisma } from "@prisma/client";
+import { AmenityCategory, Prisma } from "@prisma/client";
 import { ApiException } from "libs/utils/exception";
 import { ErrorCode, ItemMessage } from "libs/utils/enum";
 
@@ -13,6 +13,32 @@ export class AmenityService {
   constructor(
     private readonly prismaService: PrismaService,
   ) { }
+
+  async getAllAmenityMetaData(category?: string) {
+    const where: Prisma.AmenityWhereInput = {
+      deletedAt: null,
+    };
+
+    if (category && !Object.values(AmenityCategory).includes(category as AmenityCategory)) {
+      throw new ApiException(
+        `Invalid category`,
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.INVALID_INPUT,
+      );
+    }
+
+    if (category) {
+      where.category = category as AmenityCategory;
+    }
+
+    const amenities = await this.prismaService.amenity.findMany({
+      where,
+      orderBy: {
+        name: 'asc',
+      }
+    });
+    return amenities;
+  }
 
   async getAllAmenities(query: GetAllAmenityDto) {
     const pagingParams = assignPaging(query);
@@ -41,7 +67,7 @@ export class AmenityService {
       skip: pagingParams.skip,
       take: pagingParams.pageSize,
       select: {
-        amenity_id: true,
+        id: true,
         name: true,
         category: true,
         _count: { select: { properties: true } },
@@ -80,7 +106,7 @@ export class AmenityService {
   async updateAmenity(amenityId: number, dto: UpdateAmenityDto) {
     const existAmenity = await this.prismaService.amenity.findFirst({
       where: {
-        amenity_id: amenityId,
+        id: amenityId,
         deletedAt: null,
       }
     })
@@ -95,7 +121,7 @@ export class AmenityService {
     try {
       const updateAmenity = await this.prismaService.amenity.update({
         where: {
-          amenity_id: amenityId,
+          id: amenityId,
         },
         data: {
           name: dto.name ?? existAmenity.name,
@@ -114,7 +140,7 @@ export class AmenityService {
   async deleteAmenity(amenityId: number) {
     const existAmenity = await this.prismaService.amenity.findFirst({
       where: {
-        amenity_id: amenityId,
+        id: amenityId,
         deletedAt: null,
       }
     })
@@ -130,7 +156,7 @@ export class AmenityService {
       const deleteAmenity = await this.prismaService.$transaction(async (prisma) => {
         await prisma.propertyAmenity.updateMany({
           where: {
-            amenity_id: amenityId,
+            amenityId: amenityId,
           },
           data: {
             deletedAt: new Date(),
@@ -139,7 +165,7 @@ export class AmenityService {
 
         const amenity = await prisma.amenity.update({
           where: {
-            amenity_id: amenityId,
+            id: amenityId,
           },
           data: {
             deletedAt: new Date(),

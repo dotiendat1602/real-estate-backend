@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { LeadStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -20,4 +20,11 @@ export class AssignLeadDto {
   @Type(() => Number)
   @IsInt()
   agentId: number;
+}
+
+export class UpdateLeadStatusDto {
+  @ApiProperty({ description: 'Status of the lead' })
+  @IsNotEmpty()
+  @IsEnum(LeadStatus)
+  status: LeadStatus;
 }

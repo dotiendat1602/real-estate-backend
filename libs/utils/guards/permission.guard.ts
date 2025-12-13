@@ -30,7 +30,7 @@ export class PermissionsGuard implements CanActivate {
 
     const role = await this.prismaService.role.findFirst({
       where: {
-        role_id: user.role_id,
+        id: user.roleId,
       },
       include: {
         permissions: {

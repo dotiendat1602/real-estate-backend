@@ -13,14 +13,12 @@ export class LocationController {
     private readonly locationService: LocationService,
   ) { }
 
-  @Auth()
   @Get('provinces')
   @HttpCode(HttpStatus.OK)
   async getAllProvinces() {
     return this.locationService.getAllProvinces();
   }
 
-  @Auth()
   @Get('districts/:provinceId')
   @HttpCode(HttpStatus.OK)
   async getDistrictsByProvince(
@@ -29,7 +27,6 @@ export class LocationController {
     return this.locationService.getDistrictsByProvince(provinceId);
   }
 
-  @Auth()
   @Get('wards/:districtId')
   @HttpCode(HttpStatus.OK)
   async getWardsByDistrict(

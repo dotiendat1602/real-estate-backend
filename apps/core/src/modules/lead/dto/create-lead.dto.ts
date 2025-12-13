@@ -7,7 +7,7 @@ export class CreateLeadDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  post_id: number;
+  postId: number;
 
   @ApiProperty({ description: 'ID of the buyer making the inquiry' })
   @Type(() => Number)

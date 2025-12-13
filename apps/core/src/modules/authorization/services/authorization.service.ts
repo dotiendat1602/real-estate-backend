@@ -74,7 +74,7 @@ export class AuthorizationService {
     ]);
 
     const data = permissions.map(permission => ({
-      permission_id: permission.permission_id,
+      permissionId: permission.id,
       name: permission.name,
       assignedRolesCount: permission._count.roles,
     }));
@@ -115,13 +115,13 @@ export class AuthorizationService {
         select: {
           role: {
             select: {
-              role_id: true,
+              id: true,
               name: true,
             }
           },
           permission: {
             select: {
-              permission_id: true,
+              id: true,
               name: true,
             }
           }
@@ -137,8 +137,8 @@ export class AuthorizationService {
     const permissionIds = body.permissionIds;
 
     const existingRole = await this.prismaService.role.findUnique({
-      where: { role_id: roleId },
-      select: { role_id: true },
+      where: { id: roleId },
+      select: { id: true },
     });
     if (!existingRole) {
       throw new ApiException(
@@ -150,11 +150,11 @@ export class AuthorizationService {
     // Check exist permission IDs
     const existingPermissions = await this.prismaService.permission.findMany({
       where: {
-        permission_id: { in: permissionIds },
+        id: { in: permissionIds },
       },
-      select: { permission_id: true },
+      select: { id: true },
     });
-    const existingPermissionIds = existingPermissions.map(p => p.permission_id);
+    const existingPermissionIds = existingPermissions.map(p => p.id);
     const invalidPermissionIds = permissionIds.filter(id => !existingPermissionIds.includes(id));
 
     if (invalidPermissionIds.length > 0) {
@@ -166,13 +166,13 @@ export class AuthorizationService {
 
     await this.prismaService.rolesPermissions.deleteMany({
       where: {
-        role_id: roleId,
+        roleId: roleId,
       },
     });
 
     const rolesPermissionsData = permissionIds.map(permissionId => ({
-      role_id: roleId,
-      permission_id: permissionId,
+      roleId: roleId,
+      permissionId: permissionId,
     }));
 
     const result = await this.prismaService.rolesPermissions.createMany({

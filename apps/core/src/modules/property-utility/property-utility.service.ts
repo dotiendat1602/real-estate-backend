@@ -26,14 +26,14 @@ export class PropertyUtilityService {
       throw new ApiException('District requires province_id', HttpStatus.BAD_REQUEST);
     }
 
-    let province: { province_id: number } | null = null;
-    let district: { district_id: number; province_id: number } | null = null;
-    let ward: { ward_id: number; district_id: number } | null = null;
+    let province: { id: number } | null = null;
+    let district: { id: number; provinceId: number } | null = null;
+    let ward: { id: number; districtId: number } | null = null;
 
     if (province_id) {
       province = await this.prismaService.province.findUnique({
-        where: { province_id },
-        select: { province_id: true },
+        where: { id: province_id },
+        select: { id: true },
       });
       if (!province) {
         throw new ApiException(
@@ -45,8 +45,8 @@ export class PropertyUtilityService {
 
     if (district_id) {
       district = await this.prismaService.district.findUnique({
-        where: { district_id },
-        select: { district_id: true, province_id: true },
+        where: { id: district_id },
+        select: { id: true, provinceId: true },
       });
       if (!district) {
         throw new ApiException(
@@ -54,7 +54,7 @@ export class PropertyUtilityService {
           HttpStatus.NOT_FOUND
         );
       }
-      if (province && district.province_id !== province.province_id) {
+      if (province && district.provinceId !== province.id) {
         throw new ApiException(
           'District does not belong to the given province',
           HttpStatus.BAD_REQUEST
@@ -64,8 +64,8 @@ export class PropertyUtilityService {
 
     if (ward_id) {
       ward = await this.prismaService.ward.findUnique({
-        where: { ward_id },
-        select: { ward_id: true, district_id: true },
+        where: { id: ward_id },
+        select: { id: true, districtId: true },
       });
       if (!ward) {
         throw new ApiException(
@@ -73,7 +73,7 @@ export class PropertyUtilityService {
           HttpStatus.NOT_FOUND
         );
       }
-      if (district && ward.district_id !== district.district_id) {
+      if (district && ward.districtId !== district.id) {
         throw new ApiException(
           'Ward does not belong to the given district',
           HttpStatus.BAD_REQUEST
@@ -82,9 +82,9 @@ export class PropertyUtilityService {
     }
 
     return {
-      province_id: province?.province_id,
-      district_id: district?.district_id,
-      ward_id: ward?.ward_id
+      province_id: province?.id,
+      district_id: district?.id,
+      ward_id: ward?.id
     };
   }
 
@@ -99,17 +99,17 @@ export class PropertyUtilityService {
 
     if (query.utilityName) {
       const q = query.utilityName.trim();
-      where.utility_name = {
+      where.utilityName = {
         contains: q,
         mode: 'insensitive',
       }
     }
     if (query.utilityCategory) {
-      where.utility_category = query.utilityCategory;
+      where.utilityCategory = query.utilityCategory;
     }
-    if (query.province_id) where.province_id = query.province_id;
-    if (query.district_id) where.district_id = query.district_id;
-    if (query.ward_id) where.ward_id = query.ward_id;
+    if (query.province_id) where.provinceId = query.province_id;
+    if (query.district_id) where.districtId = query.district_id;
+    if (query.ward_id) where.wardId = query.ward_id;
 
     const utilities = await this.prismaService.utility.findMany({
       where,
@@ -129,14 +129,14 @@ export class PropertyUtilityService {
     try {
       const newUtility = await this.prismaService.utility.create({
         data: {
-          utility_name: dto.utility_name,
-          utility_category: dto.utility_category,
+          utilityName: dto.utility_name,
+          utilityCategory: dto.utility_category,
           lat: dto.lat,
           lon: dto.lon,
           location: dto.location,
-          province: loc.province_id ? { connect: { province_id: loc.province_id } } : undefined,
-          district: loc.district_id ? { connect: { district_id: loc.district_id } } : undefined,
-          ward: loc.ward_id ? { connect: { ward_id: loc.ward_id } } : undefined,
+          province: loc.province_id ? { connect: { id: loc.province_id } } : undefined,
+          district: loc.district_id ? { connect: { id: loc.district_id } } : undefined,
+          ward: loc.ward_id ? { connect: { id: loc.ward_id } } : undefined,
         }
       });
       return newUtility;
@@ -151,7 +151,7 @@ export class PropertyUtilityService {
   async updatePropertyUtility(utilityId: number, dto: UpdatePropertyUtilityDto) {
     const existUtility = await this.prismaService.utility.findFirst({
       where: {
-        utility_id: utilityId,
+        id: utilityId,
       },
     });
     if (!existUtility) {
@@ -162,24 +162,24 @@ export class PropertyUtilityService {
     }
 
     // nếu client gửi ID mới → validate; nếu không gửi → giữ nguyên
-    const targetProvinceId = dto.province_id ?? existUtility.province_id ?? undefined;
-    const targetDistrictId = dto.district_id ?? existUtility.district_id ?? undefined;
-    const targetWardId = dto.ward_id ?? existUtility.ward_id ?? undefined;
+    const targetProvinceId = dto.province_id ?? existUtility.provinceId ?? undefined;
+    const targetDistrictId = dto.district_id ?? existUtility.districtId ?? undefined;
+    const targetWardId = dto.ward_id ?? existUtility.wardId ?? undefined;
 
     const loc = await this.validateLocationIds(targetProvinceId, targetDistrictId, targetWardId);
 
     try {
       const updateUtility = await this.prismaService.utility.update({
-        where: { utility_id: utilityId },
+        where: { id: utilityId },
         data: {
-          utility_name: dto.utility_name ?? existUtility.utility_name,
-          utility_category: dto.utility_category ?? existUtility.utility_category,
+          utilityName: dto.utility_name ?? existUtility.utilityName,
+          utilityCategory: dto.utility_category ?? existUtility.utilityCategory,
           lat: dto.lat ?? existUtility.lat,
           lon: dto.lon ?? existUtility.lon,
           location: dto.location ?? existUtility.location,
-          province_id: loc.province_id ?? null,
-          district_id: loc.district_id ?? null,
-          ward_id: loc.ward_id ?? null,
+          provinceId: loc.province_id ?? null,
+          districtId: loc.district_id ?? null,
+          wardId: loc.ward_id ?? null,
         }
       });
       return updateUtility;
@@ -194,7 +194,7 @@ export class PropertyUtilityService {
   async deletePropertyUtility(utilityId: number) {
     const existUtility = await this.prismaService.utility.findFirst({
       where: {
-        utility_id: utilityId,
+        id: utilityId,
       },
     });
     if (!existUtility) {
@@ -208,13 +208,13 @@ export class PropertyUtilityService {
       const deleted = await this.prismaService.$transaction(async (prisma) => {
         await prisma.propertyUtility.deleteMany({
           where: {
-            utility_id: utilityId,
+            utilityId: utilityId,
           },
         });
 
         return await prisma.utility.delete({
           where: {
-            utility_id: utilityId,
+            id: utilityId,
           },
         });
       });

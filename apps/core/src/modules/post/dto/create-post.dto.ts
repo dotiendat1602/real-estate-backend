@@ -10,7 +10,7 @@ export class CreatePostDto {
   @IsNotEmpty()
   @IsInt()
   @IsPositive()
-  property_id: number
+  propertyId: number
 
   @ApiProperty({
     description: "Title of Post",

@@ -38,10 +38,10 @@ export class UserService {
     // return user;
     const userInfo = await this.prismaService.user.findFirst({
       where: {
-        user_id: user.user_id,
+        id: user.id,
       },
       select: {
-        user_id: true,
+        id: true,
         email: true,
         name: true,
         phone: true,
@@ -60,7 +60,7 @@ export class UserService {
       );
     }
     return {
-      user_id: userInfo.user_id,
+      id: userInfo.id,
       email: userInfo.email,
       name: userInfo.name,
       phone: userInfo.phone,
@@ -74,14 +74,14 @@ export class UserService {
 
     return await this.prismaService.user.update({
       where: {
-        user_id: user.user_id,
+        id: user.id,
       },
       data: {
         name: dto.name,
         phone: dto.phone,
       },
       select: {
-        user_id: true,
+        id: true,
         email: true,
         name: true,
         phone: true,
@@ -101,13 +101,13 @@ export class UserService {
     if (await validateHash(dto.currentPassword, user.password)) {
       return await this.prismaService.user.update({
         where: {
-          user_id: user.user_id,
+          id: user.id,
         },
         data: {
           password: generateHash(dto.newPassword),
         },
         select: {
-          user_id: true,
+          id: true,
           email: true,
           name: true,
           phone: true,
@@ -172,7 +172,7 @@ export class UserService {
       skip: pagingParams.skip,
       take: pagingParams.pageSize,
       select: {
-        user_id: true,
+        id: true,
         name: true,
         email: true,
         phone: true,
@@ -211,10 +211,10 @@ export class UserService {
             email: body.email,
             phone: body.phoneNumber || null,
             password: generateHash(this.DEFAULT_PASSWORD),
-            role_id: role.role_id,
+            roleId: role.id,
           },
           select: {
-            user_id: true,
+            id: true,
             name: true,
             email: true,
             status: true,
@@ -236,17 +236,17 @@ export class UserService {
       } else {
         const restoreUser = await this.prismaService.user.update({
           where: {
-            user_id: existUser.user_id,
+            id: existUser.id,
           },
           data: {
             name: body.name,
             phone: body.phoneNumber || null,
             password: generateHash(this.DEFAULT_PASSWORD),
-            role_id: role.role_id,
+            roleId: role.id,
             deletedAt: null,
           },
           select: {
-            user_id: true,
+            id: true,
             name: true,
             email: true,
             status: true,
@@ -271,7 +271,7 @@ export class UserService {
   async editUser(userId: number, body: EditUsersDto) {
     const existUser = await this.prismaService.user.findFirst({
       where: {
-        user_id: userId,
+        id: userId,
         deletedAt: null,
       }
     })
@@ -294,7 +294,7 @@ export class UserService {
           email: body.email,
           deletedAt: null,
           NOT: {
-            user_id: userId,
+            id: userId,
           }
         }
       })
@@ -311,13 +311,13 @@ export class UserService {
     try {
       const newUser = await this.prismaService.user.update({
         where: {
-          user_id: userId,
+          id: userId,
         },
         data: {
           email: body.email ?? existUser.email,
           phone: body.phone ?? existUser.phone,
           name: body.name ?? existUser.name,
-          role_id: existRole ? existRole.role_id : existUser.role_id,
+          roleId: existRole ? existRole.id : existUser.roleId,
           status: body.status ?? existUser.status,
         }
       })
@@ -334,7 +334,7 @@ export class UserService {
   async deleteUser(userId: number) {
     const existUser = await this.prismaService.user.findFirst({
       where: {
-        user_id: userId,
+        id: userId,
         deletedAt: null,
       }
     })
@@ -349,7 +349,7 @@ export class UserService {
     try {
       return await this.prismaService.user.update({
         where: {
-          user_id: userId,
+          id: userId,
         },
         data: {
           deletedAt: new Date()

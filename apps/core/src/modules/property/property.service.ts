@@ -17,7 +17,7 @@ export class PropertyService {
 
   private async checkExistProperty(propertyId: number) {
     const existProperty = await this.prismaService.property.findFirst({
-      where: { property_id: propertyId, deletedAt: null },
+      where: { id: propertyId, deletedAt: null },
     });
     if (!existProperty) {
       throw new ApiException(
@@ -29,7 +29,7 @@ export class PropertyService {
 
   private async checkExistAmenity(amenityId: number) {
     const existAmenity = await this.prismaService.amenity.findFirst({
-      where: { amenity_id: amenityId, deletedAt: null },
+      where: { id: amenityId, deletedAt: null },
     });
     if (!existAmenity) {
       throw new ApiException(
@@ -41,7 +41,7 @@ export class PropertyService {
 
   private async checkExistUtility(utilityId: number) {
     const existUtility = await this.prismaService.utility.findFirst({
-      where: { utility_id: utilityId, deletedAt: null },
+      where: { id: utilityId, deletedAt: null },
     });
     if (!existUtility) {
       throw new ApiException(
@@ -52,25 +52,25 @@ export class PropertyService {
   }
 
   private async validateLocationIds(
-    province_id?: number,
-    district_id?: number,
-    ward_id?: number,
+    provinceId?: number,
+    districtId?: number,
+    wardId?: number,
   ) {
-    if (ward_id && !district_id) {
-      throw new ApiException('Ward requires district_id', HttpStatus.BAD_REQUEST);
+    if (wardId && !districtId) {
+      throw new ApiException('Ward requires districtId', HttpStatus.BAD_REQUEST);
     }
-    if (district_id && !province_id) {
-      throw new ApiException('District requires province_id', HttpStatus.BAD_REQUEST);
+    if (districtId && !provinceId) {
+      throw new ApiException('District requires provinceId', HttpStatus.BAD_REQUEST);
     }
 
-    let province: { province_id: number } | null = null;
-    let district: { district_id: number; province_id: number } | null = null;
-    let ward: { ward_id: number; district_id: number } | null = null;
+    let province: { id: number } | null = null;
+    let district: { id: number; provinceId: number } | null = null;
+    let ward: { id: number; districtId: number } | null = null;
 
-    if (province_id) {
+    if (provinceId) {
       province = await this.prismaService.province.findUnique({
-        where: { province_id },
-        select: { province_id: true },
+        where: { id: provinceId },
+        select: { id: true },
       });
       if (!province) {
         throw new ApiException(
@@ -80,10 +80,10 @@ export class PropertyService {
       }
     }
 
-    if (district_id) {
+    if (districtId) {
       district = await this.prismaService.district.findUnique({
-        where: { district_id },
-        select: { district_id: true, province_id: true },
+        where: { id: districtId },
+        select: { id: true, provinceId: true },
       });
       if (!district) {
         throw new ApiException(
@@ -91,7 +91,7 @@ export class PropertyService {
           HttpStatus.NOT_FOUND
         );
       }
-      if (province && district.province_id !== province.province_id) {
+      if (province && district.provinceId !== province.id) {
         throw new ApiException(
           'District does not belong to the given province',
           HttpStatus.BAD_REQUEST
@@ -99,10 +99,10 @@ export class PropertyService {
       }
     }
 
-    if (ward_id) {
+    if (wardId) {
       ward = await this.prismaService.ward.findUnique({
-        where: { ward_id },
-        select: { ward_id: true, district_id: true },
+        where: { id: wardId },
+        select: { id: true, districtId: true },
       });
       if (!ward) {
         throw new ApiException(
@@ -110,7 +110,7 @@ export class PropertyService {
           HttpStatus.NOT_FOUND
         );
       }
-      if (district && ward.district_id !== district.district_id) {
+      if (district && ward.districtId !== district.id) {
         throw new ApiException(
           'Ward does not belong to the given district',
           HttpStatus.BAD_REQUEST
@@ -119,9 +119,9 @@ export class PropertyService {
     }
 
     return {
-      province_id: province?.province_id,
-      district_id: district?.district_id,
-      ward_id: ward?.ward_id
+      provinceId: province?.id,
+      districtId: district?.id,
+      wardId: ward?.id
     };
   }
 
@@ -170,12 +170,12 @@ export class PropertyService {
     let wardId: number | undefined;
 
     // check province
-    if (pagingParams.province_id) {
+    if (pagingParams.provinceId) {
       const province = await this.prismaService.province.findUnique({
         where: {
-          province_id: pagingParams.province_id,
+          id: pagingParams.provinceId,
         },
-        select: { province_id: true },
+        select: { id: true },
       });
       if (!province) {
         throw new ApiException(
@@ -184,18 +184,18 @@ export class PropertyService {
         )
       }
 
-      provinceId = province.province_id;
-      where.province_id = provinceId;
+      provinceId = province.id;
+      where.provinceId = provinceId;
     }
 
     // check district
-    if (pagingParams.district_id) {
+    if (pagingParams.districtId) {
       const district = await this.prismaService.district.findFirst({
         where: {
-          district_id: pagingParams.district_id,
-          ...(provinceId ? { province_id: provinceId } : {}),
+          id: pagingParams.districtId,
+          ...(provinceId ? { provinceId: provinceId } : {}),
         },
-        select: { district_id: true, province_id: true },
+        select: { id: true, provinceId: true },
       });
       if (!district) {
         throw new ApiException(
@@ -204,20 +204,20 @@ export class PropertyService {
         )
       }
 
-      districtId = district.district_id;
-      // Nếu chưa có provinceId mà district có, cũng gán where.province_id
-      where.district_id = districtId;
-      if (!provinceId) where.province_id = district.province_id;
+      districtId = district.id;
+      // Nếu chưa có provinceId mà district có, cũng gán where.provinceId
+      where.districtId = districtId;
+      if (!provinceId) where.provinceId = district.provinceId;
     }
 
     // check ward
-    if (pagingParams.ward_id) {
+    if (pagingParams.wardId) {
       const ward = await this.prismaService.ward.findFirst({
         where: {
-          ward_id: pagingParams.ward_id,
-          ...(districtId ? { district_id: districtId } : {}),
+          id: pagingParams.wardId,
+          ...(districtId ? { districtId: districtId } : {}),
         },
-        select: { ward_id: true, district_id: true },
+        select: { id: true, districtId: true },
       });
       if (!ward) {
         throw new ApiException(
@@ -226,10 +226,10 @@ export class PropertyService {
         )
       }
 
-      wardId = ward.ward_id;
-      where.ward_id = wardId;
+      wardId = ward.id;
+      where.wardId = wardId;
 
-      if (!districtId) where.district_id = ward.district_id;
+      if (!districtId) where.districtId = ward.districtId;
     }
 
     const [properties, total] = await Promise.all([
@@ -241,7 +241,7 @@ export class PropertyService {
         include: {
           category: {
             select: {
-              category_name: true,
+              categoryName: true,
             }
           },
           owner: {
@@ -251,30 +251,30 @@ export class PropertyService {
           },
           ward: {
             select: {
-              ward_id: true,
+              id: true,
               name: true,
             }
           },
           district: {
             select: {
-              district_id: true,
+              id: true,
               name: true,
             }
           },
           province: {
             select: {
-              province_id: true,
+              id: true,
               name: true,
             }
           },
           images: {
             select: {
-              image_id: true,
+              id: true,
               imageUrl: true,
               isPrimary: true,
             }
           },
-          PropertyAmenities: {
+          propertyAmenities: {
             select: {
               amenity: {
                 select: {
@@ -285,12 +285,12 @@ export class PropertyService {
             }
           },
           posts: {},
-          PropertyUtilities: {
+          propertyUtilities: {
             include: {
               utility: {
                 select: {
-                  utility_name: true,
-                  utility_category: true,
+                  utilityName: true,
+                  utilityCategory: true,
                 }
               }
             }
@@ -306,13 +306,13 @@ export class PropertyService {
   async getOneProperty(propertyId: number) {
     const existProperty = await this.prismaService.property.findFirst({
       where: {
-        property_id: propertyId,
+        id: propertyId,
         deletedAt: null,
       },
       include: {
         category: {
           select: {
-            category_name: true,
+            categoryName: true,
           }
         },
         owner: {
@@ -322,30 +322,30 @@ export class PropertyService {
         },
         ward: {
           select: {
-            ward_id: true,
+            id: true,
             name: true,
           }
         },
         district: {
           select: {
-            district_id: true,
+            id: true,
             name: true,
           }
         },
         province: {
           select: {
-            province_id: true,
+            id: true,
             name: true,
           }
         },
         images: {
           select: {
-            image_id: true,
+            id: true,
             imageUrl: true,
             isPrimary: true,
           }
         },
-        PropertyAmenities: {
+        propertyAmenities: {
           select: {
             amenity: {
               select: {
@@ -356,12 +356,12 @@ export class PropertyService {
           }
         },
         posts: {},
-        PropertyUtilities: {
+        propertyUtilities: {
           include: {
             utility: {
               select: {
-                utility_name: true,
-                utility_category: true,
+                utilityName: true,
+                utilityCategory: true,
               }
             }
           }
@@ -384,7 +384,7 @@ export class PropertyService {
       throw new ApiException('Unauthorized', HttpStatus.UNAUTHORIZED);
     }
 
-    const hasLocs = !!dto.province_id || !!dto.district_id || !!dto.ward_id;
+    const hasLocs = !!dto.provinceId || !!dto.districtId || !!dto.wardId;
     const hasGeo = dto.lat !== undefined && dto.lon !== undefined;
     if (!hasLocs && !hasGeo) {
       throw new ApiException(
@@ -393,7 +393,7 @@ export class PropertyService {
       );
     }
 
-    const loc = await this.validateLocationIds(dto.province_id, dto.district_id, dto.ward_id);
+    const loc = await this.validateLocationIds(dto.provinceId, dto.districtId, dto.wardId);
 
     return this.prismaService.$transaction(async (prisma) => {
       try {
@@ -416,11 +416,11 @@ export class PropertyService {
             lat: dto.lat,
             lon: dto.lon,
             location: dto.location,
-            category_id: dto.category_id,
-            owner_id: creator.user_id,
-            province_id: loc.province_id ?? null,
-            district_id: loc.district_id ?? null,
-            ward_id: loc.ward_id ?? null,
+            categoryId: dto.categoryId,
+            ownerId: creator.id,
+            provinceId: loc.provinceId ?? null,
+            districtId: loc.districtId ?? null,
+            wardId: loc.wardId ?? null,
             status: dto.status ?? 'ACTIVE',
           },
         });
@@ -432,37 +432,37 @@ export class PropertyService {
           const imagesData = dto.images.map((img) => {
             const isPrimary = !primaryMarked && img.isPrimary ? true : false;
             if (isPrimary) primaryMarked = true;
-            return { property_id: property.property_id, imageUrl: img.imageUrl, isPrimary };
+            return { propertyId: property.id, imageUrl: img.imageUrl, isPrimary };
           });
           await prisma.propertyImage.createMany({ data: imagesData, skipDuplicates: true });
           // nếu vẫn chưa có primary, set ảnh đầu tiên làm primary
           if (!primaryMarked) {
             const first = await prisma.propertyImage.findFirst({
-              where: { property_id: property.property_id },
-              orderBy: { image_id: 'asc' },
-              select: { image_id: true },
+              where: { propertyId: property.id },
+              orderBy: { id: 'asc' },
+              select: { id: true },
             });
             if (first) {
-              await prisma.propertyImage.update({ where: { image_id: first.image_id }, data: { isPrimary: true } });
+              await prisma.propertyImage.update({ where: { id: first.id }, data: { isPrimary: true } });
             }
           }
         }
 
         // Amenities
-        if (dto.amenity_ids?.length) {
-          const amenities = dto.amenity_ids.map((amenity_id) => ({ property_id: property.property_id, amenity_id }));
+        if (dto.amenityIds?.length) {
+          const amenities = dto.amenityIds.map((amenityId) => ({ propertyId: property.id, amenityId }));
           for (const amenity of amenities) {
             await prisma.propertyAmenity.upsert({
               where: {
-                property_id_amenity_id: {
-                  property_id: amenity.property_id,
-                  amenity_id: amenity.amenity_id
+                propertyId_amenityId: {
+                  propertyId: amenity.propertyId,
+                  amenityId: amenity.amenityId
                 },
               },
               update: { deletedAt: null },
               create: {
-                property_id: amenity.property_id,
-                amenity_id: amenity.amenity_id,
+                propertyId: amenity.propertyId,
+                amenityId: amenity.amenityId,
               },
             });
           }
@@ -473,20 +473,20 @@ export class PropertyService {
           for (const u of dto.utilities) {
             await prisma.propertyUtility.upsert({
               where: {
-                property_id_utility_id: { property_id: property.property_id, utility_id: u.utility_id },
+                propertyId_utilityId: { propertyId: property.id, utilityId: u.id },
               },
               update: {
-                distance_m: u.distance_m ?? undefined,
-                travel_time_s: u.travel_time_s ?? undefined,
-                is_primary: u.is_primary ?? undefined,
+                distanceM: u.distanceM ?? undefined,
+                travelTimeS: u.travelTimeS ?? undefined,
+                isPrimary: u.isPrimary ?? undefined,
                 note: u.note ?? undefined,
               },
               create: {
-                property_id: property.property_id,
-                utility_id: u.utility_id,
-                distance_m: u.distance_m ?? undefined,
-                travel_time_s: u.travel_time_s ?? undefined,
-                is_primary: u.is_primary ?? undefined,
+                propertyId: property.id,
+                utilityId: u.id,
+                distanceM: u.distanceM ?? undefined,
+                travelTimeS: u.travelTimeS ?? undefined,
+                isPrimary: u.isPrimary ?? undefined,
                 note: u.note ?? undefined,
               },
             });
@@ -494,11 +494,11 @@ export class PropertyService {
         }
 
         const res = await this.prismaService.property.findFirst({
-          where: { property_id: property.property_id },
+          where: { id: property.id },
           include: {
             category: {
               select: {
-                category_name: true,
+                categoryName: true,
               }
             },
             owner: {
@@ -508,30 +508,30 @@ export class PropertyService {
             },
             ward: {
               select: {
-                ward_id: true,
+                id: true,
                 name: true,
               }
             },
             district: {
               select: {
-                district_id: true,
+                id: true,
                 name: true,
               }
             },
             province: {
               select: {
-                province_id: true,
+                id: true,
                 name: true,
               }
             },
             images: {
               select: {
-                image_id: true,
+                id: true,
                 imageUrl: true,
                 isPrimary: true,
               }
             },
-            PropertyAmenities: {
+            propertyAmenities: {
               select: {
                 amenity: {
                   select: {
@@ -542,12 +542,12 @@ export class PropertyService {
               }
             },
             posts: {},
-            PropertyUtilities: {
+            propertyUtilities: {
               include: {
                 utility: {
                   select: {
-                    utility_name: true,
-                    utility_category: true,
+                    utilityName: true,
+                    utilityCategory: true,
                   }
                 }
               }
@@ -569,7 +569,7 @@ export class PropertyService {
   async updateProperty(propertyId: number, dto: UpdatePropertyDto) {
     const existProperty = await this.prismaService.property.findFirst({
       where: {
-        property_id: propertyId,
+        id: propertyId,
       },
     });
     if (!existProperty) {
@@ -581,7 +581,7 @@ export class PropertyService {
 
     try {
       const updatedProperty = await this.prismaService.property.update({
-        where: { property_id: propertyId },
+        where: { id: propertyId },
         data: {
           title: dto.title ?? existProperty.title,
           description: dto.description ?? existProperty.description,
@@ -601,12 +601,12 @@ export class PropertyService {
           lon: dto.lon ?? existProperty.lon,
           location: dto.location ?? existProperty.location,
           status: dto.status ?? existProperty.status,
-          category_id: dto.category_id ?? existProperty.category_id,
+          categoryId: dto.categoryId ?? existProperty.categoryId,
         },
         include: {
           category: {
             select: {
-              category_name: true,
+              categoryName: true,
             }
           },
           owner: {
@@ -616,30 +616,30 @@ export class PropertyService {
           },
           ward: {
             select: {
-              ward_id: true,
+              id: true,
               name: true,
             }
           },
           district: {
             select: {
-              district_id: true,
+              id: true,
               name: true,
             }
           },
           province: {
             select: {
-              province_id: true,
+              id: true,
               name: true,
             }
           },
           images: {
             select: {
-              image_id: true,
+              id: true,
               imageUrl: true,
               isPrimary: true,
             }
           },
-          PropertyAmenities: {
+          propertyAmenities: {
             select: {
               amenity: {
                 select: {
@@ -650,12 +650,12 @@ export class PropertyService {
             }
           },
           posts: {},
-          PropertyUtilities: {
+          propertyUtilities: {
             include: {
               utility: {
                 select: {
-                  utility_name: true,
-                  utility_category: true,
+                  utilityName: true,
+                  utilityCategory: true,
                 }
               }
             }
@@ -674,7 +674,7 @@ export class PropertyService {
   async deleteProperty(propertyId: number) {
     const existProperty = await this.prismaService.property.findFirst({
       where: {
-        property_id: propertyId,
+        id: propertyId,
       },
     });
     if (!existProperty) {
@@ -687,15 +687,15 @@ export class PropertyService {
     try {
       return await this.prismaService.$transaction(async (prisma) => {
         await prisma.propertyAmenity.updateMany({
-          where: { property_id: propertyId },
+          where: { propertyId: propertyId },
           data: { deletedAt: new Date() },
         });
         await prisma.propertyUtility.updateMany({
-          where: { property_id: propertyId },
+          where: { propertyId: propertyId },
           data: { deletedAt: new Date() },
         });
         return await prisma.property.update({
-          where: { property_id: propertyId },
+          where: { id: propertyId },
           data: { deletedAt: new Date() },
         });
       });
@@ -710,7 +710,7 @@ export class PropertyService {
   async removeImageFromProperty(propertyId: number, imageId: number) {
     const existProperty = await this.prismaService.property.findFirst({
       where: {
-        property_id: propertyId,
+        id: propertyId,
       },
     });
     if (!existProperty) {
@@ -722,11 +722,11 @@ export class PropertyService {
 
     try {
       return await this.prismaService.property.update({
-        where: { property_id: propertyId },
+        where: { id: propertyId },
         data: {
           images: {
             delete: {
-              image_id: imageId,
+              id: imageId,
             },
           },
         },
@@ -746,8 +746,8 @@ export class PropertyService {
 
     const existAmenityInProperty = await this.prismaService.propertyAmenity.findFirst({
       where: {
-        property_id: propertyId,
-        amenity_id: amenityId,
+        propertyId: propertyId,
+        amenityId: amenityId,
       },
     });
     if (existAmenityInProperty && existAmenityInProperty?.deletedAt === null) {
@@ -758,7 +758,7 @@ export class PropertyService {
     } else if (existAmenityInProperty && existAmenityInProperty?.deletedAt !== null) {
       return await this.prismaService.propertyAmenity.update({
         where: {
-          property_id_amenity_id: { property_id: propertyId, amenity_id: amenityId },
+          propertyId_amenityId: { propertyId: propertyId, amenityId: amenityId },
         },
         data: { deletedAt: null },
       });
@@ -767,8 +767,8 @@ export class PropertyService {
     try {
       return await this.prismaService.propertyAmenity.create({
         data: {
-          property_id: propertyId,
-          amenity_id: amenityId,
+          propertyId: propertyId,
+          amenityId: amenityId,
         },
       });
     } catch (error) {
@@ -787,9 +787,9 @@ export class PropertyService {
     try {
       return await this.prismaService.propertyAmenity.update({
         where: {
-          property_id_amenity_id: {
-            property_id: propertyId,
-            amenity_id: amenityId,
+          propertyId_amenityId: {
+            propertyId: propertyId,
+            amenityId: amenityId,
           },
         },
         data: {
@@ -811,8 +811,8 @@ export class PropertyService {
 
     const existUtilityInProperty = await this.prismaService.propertyUtility.findFirst({
       where: {
-        property_id: propertyId,
-        utility_id: utilityId,
+        propertyId: propertyId,
+        utilityId: utilityId,
       },
     });
 
@@ -824,9 +824,9 @@ export class PropertyService {
     } else if (existUtilityInProperty && existUtilityInProperty.deletedAt !== null) {
       return await this.prismaService.propertyUtility.update({
         where: {
-          property_id_utility_id: {
-            property_id: propertyId,
-            utility_id: utilityId,
+          propertyId_utilityId: {
+            propertyId: propertyId,
+            utilityId: utilityId,
           }
         },
         data: {
@@ -838,8 +838,8 @@ export class PropertyService {
     try {
       return await this.prismaService.propertyUtility.create({
         data: {
-          property_id: propertyId,
-          utility_id: utilityId,
+          propertyId: propertyId,
+          utilityId: utilityId,
         }
       })
     } catch (error) {
@@ -858,9 +858,9 @@ export class PropertyService {
     try {
       return await this.prismaService.propertyUtility.update({
         where: {
-          property_id_utility_id: {
-            property_id: propertyId,
-            utility_id: utilityId,
+          propertyId_utilityId: {
+            propertyId: propertyId,
+            utilityId: utilityId,
           },
         },
         data: {

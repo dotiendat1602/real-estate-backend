@@ -8,22 +8,32 @@ export class LocationService {
   ) { }
 
   async getAllProvinces() {
-    return this.prismaService.province.findMany();
+    return this.prismaService.province.findMany({
+      orderBy: {
+        name: 'asc'
+      }
+    });
   }
 
   async getDistrictsByProvince(provinceId: number) {
     return this.prismaService.district.findMany({
       where: {
-        province_id: provinceId,
+        provinceId: provinceId,
       },
+      orderBy: {
+        name: 'asc'
+      }
     });
   }
 
   async getWardsByDistrict(districtId: number) {
     return this.prismaService.ward.findMany({
       where: {
-        district_id: districtId
+        districtId: districtId
       },
+      orderBy: {
+        name: 'asc'
+      }
     });
   }
 }

@@ -40,15 +40,15 @@ export class TokenService {
 
   async signToken(user: User, isAccessToken = false) {
     const accessToken = await this.createAccessToken({
-      user_id: user.user_id,
+      user_id: user.id,
       email: user.email,
-      role_id: user.role_id,
+      role_id: user.roleId,
     });
 
     const refreshToken = await this.createRefreshToken({
-      user_id: user.user_id,
+      user_id: user.id,
       email: user.email,
-      role_id: user.role_id,
+      role_id: user.roleId,
     });
 
     if (isAccessToken) {
@@ -72,7 +72,7 @@ export class TokenService {
       }
 
       const user = await this.prismaService.user.findFirst({
-        where: { user_id: decoded.userId },
+        where: { id: decoded.userId },
       });
 
       if (!user) {

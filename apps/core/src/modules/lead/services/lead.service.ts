@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { PrismaService } from 'libs/modules/prisma/prisma.service';
-import { Prisma, RoleType, User } from '@prisma/client';
+import { LeadStatus, Prisma, RoleType, User } from '@prisma/client';
 import { ContextProvider } from 'libs/utils/providers/context.provider';
 import { assignPaging, returnPaging } from 'libs/utils/helpers';
 import { ApiException } from 'libs/utils/exception';
@@ -8,6 +8,7 @@ import { ErrorCode, ItemMessage } from 'libs/utils/enum';
 import { GetAllLeadsDto } from '../dto/get-all-leads.dto';
 import { CreateLeadDto } from '../dto/create-lead.dto';
 import { AssignLeadDto, UpdateLeadDto } from '../dto/update-lead.dto';
+import { GetMyLeadsDto } from '../dto/get-my-leads.dto';
 
 
 @Injectable()
@@ -27,14 +28,14 @@ export class LeadService {
     if (roleName === RoleType.AGENT) {
       return {
         deletedAt: null,
-        agentId: authUser.user_id,
+        agentId: authUser.id,
       };
     }
 
     // fallback: không cho xem (vì endpoint này cần MANAGE_LEADS, nhưng để an toàn)
     return {
       deletedAt: null,
-      lead_id: -1,
+      id: -1,
     };
   }
 
@@ -65,7 +66,7 @@ export class LeadService {
     }
 
     if (pagingParams.status) where.status = pagingParams.status;
-    if (pagingParams.postId) where.post_id = pagingParams.postId;
+    if (pagingParams.postId) where.postId = pagingParams.postId;
     if (pagingParams.buyerId) where.buyerId = pagingParams.buyerId;
     if (pagingParams.agentId) {
       // Admin/Manager mới nên filter agentId tùy ý
@@ -88,8 +89,8 @@ export class LeadService {
       skip: pagingParams.skip,
       take: pagingParams.pageSize,
       select: {
-        lead_id: true,
-        post_id: true,
+        id: true,
+        postId: true,
         buyerId: true,
         agentId: true,
         name: true,
@@ -102,7 +103,7 @@ export class LeadService {
         updatedAt: true,
         post: {
           select: {
-            post_id: true,
+            id: true,
             postTitle: true,
             postStatus: true,
             createdById: true,
@@ -110,7 +111,7 @@ export class LeadService {
         },
         buyer: {
           select: {
-            user_id: true,
+            id: true,
             name: true,
             email: true,
             phone: true,
@@ -118,7 +119,7 @@ export class LeadService {
         },
         agent: {
           select: {
-            user_id: true,
+            id: true,
             name: true,
             email: true,
             phone: true,
@@ -139,11 +140,11 @@ export class LeadService {
     const lead = await this.prismaService.lead.findFirst({
       where: {
         ...accessWhere,
-        lead_id: leadId,
+        id: leadId,
       },
       select: {
-        lead_id: true,
-        post_id: true,
+        id: true,
+        postId: true,
         buyerId: true,
         agentId: true,
         name: true,
@@ -156,13 +157,13 @@ export class LeadService {
         updatedAt: true,
         post: {
           select: {
-            post_id: true,
+            id: true,
             postTitle: true,
             postStatus: true,
             createdById: true,
             property: {
               select: {
-                property_id: true,
+                id: true,
                 title: true,
                 price: true,
                 location: true,
@@ -172,7 +173,7 @@ export class LeadService {
         },
         buyer: {
           select: {
-            user_id: true,
+            id: true,
             name: true,
             email: true,
             phone: true,
@@ -180,7 +181,7 @@ export class LeadService {
         },
         agent: {
           select: {
-            user_id: true,
+            id: true,
             name: true,
             email: true,
             phone: true,
@@ -204,9 +205,9 @@ export class LeadService {
     // Optional: nếu endpoint public thì buyerId có thể null
     // Validate post tồn tại + không bị deleted
     const post = await this.prismaService.post.findFirst({
-      where: { post_id: body.post_id, deletedAt: null },
+      where: { id: body.postId, deletedAt: null },
       select: {
-        post_id: true,
+        id: true,
         createdById: true,
         postStatus: true,
       },
@@ -224,29 +225,29 @@ export class LeadService {
     // Nếu không phải agent thì để null (Admin/Manager sẽ assign sau)
     let autoAgentId: number | null = null;
     const createdBy = await this.prismaService.user.findFirst({
-      where: { user_id: post.createdById, deletedAt: null },
-      select: { user_id: true, role: { select: { name: true } } },
+      where: { id: post.createdById, deletedAt: null },
+      select: { id: true, role: { select: { name: true } } },
     });
 
     if (createdBy?.role?.name === RoleType.AGENT) {
-      autoAgentId = createdBy.user_id;
+      autoAgentId = createdBy.id;
     }
 
     try {
       const lead = await this.prismaService.lead.create({
         data: {
-          post_id: body.post_id,
+          postId: body.postId,
           buyerId: body.buyerId ?? null,
           agentId: autoAgentId,
           name: body.name ?? null,
           email: body.email ?? null,
           phone: body.phone ?? null,
           message: body.message ?? null,
-          status: 'NEW',
+          status: LeadStatus.NEW,
         },
         select: {
-          lead_id: true,
-          post_id: true,
+          id: true,
+          postId: true,
           buyerId: true,
           agentId: true,
           name: true,
@@ -274,8 +275,8 @@ export class LeadService {
     const accessWhere = this.buildLeadAccessWhere(authUser);
 
     const exist = await this.prismaService.lead.findFirst({
-      where: { ...accessWhere, lead_id: leadId },
-      select: { lead_id: true },
+      where: { ...accessWhere, id: leadId },
+      select: { id: true },
     });
 
     if (!exist) {
@@ -288,14 +289,14 @@ export class LeadService {
 
     try {
       return await this.prismaService.lead.update({
-        where: { lead_id: leadId },
+        where: { id: leadId },
         data: {
           status: body.status ?? undefined,
           note: body.note ?? undefined,
         },
         select: {
-          lead_id: true,
-          post_id: true,
+          id: true,
+          postId: true,
           buyerId: true,
           agentId: true,
           name: true,
@@ -307,6 +308,42 @@ export class LeadService {
           createdAt: true,
           updatedAt: true,
         },
+      });
+    } catch (error) {
+      throw new ApiException(
+        `${ItemMessage.FAIL_UPDATE}: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        ErrorCode.INVALID_INPUT,
+      );
+    }
+  }
+
+  async updateStatus(leadId: number, status: LeadStatus) {
+    const authUser = ContextProvider.getAuthUser<User>();
+    const accessWhere = this.buildLeadAccessWhere(authUser);
+
+    const exist = await this.prismaService.lead.findFirst({
+      where: { ...accessWhere, id: leadId },
+      select: { id: true },
+    });
+
+    if (!exist) {
+      throw new ApiException(
+        `${ItemMessage.NOT_FOUND}: Lead not found`,
+        HttpStatus.NOT_FOUND,
+        ErrorCode.INVALID_INPUT,
+      );
+    }
+
+    try {
+      const updated = await this.prismaService.$transaction(async (prisma) => {
+        const updatedLead = await prisma.lead.update({
+          where: { id: leadId },
+          data: { status },
+        });
+
+        // TODO: Add log action later
+        return updatedLead;
       });
     } catch (error) {
       throw new ApiException(
@@ -332,8 +369,8 @@ export class LeadService {
     }
 
     const lead = await this.prismaService.lead.findFirst({
-      where: { lead_id: leadId, deletedAt: null },
-      select: { lead_id: true },
+      where: { id: leadId, deletedAt: null },
+      select: { id: true },
     });
 
     if (!lead) {
@@ -346,8 +383,8 @@ export class LeadService {
 
     // validate agent exists + role=AGENT
     const agent = await this.prismaService.user.findFirst({
-      where: { user_id: body.agentId, deletedAt: null },
-      select: { user_id: true, role: { select: { name: true } } },
+      where: { id: body.agentId, deletedAt: null },
+      select: { id: true, role: { select: { name: true } } },
     });
 
     if (!agent || agent.role?.name !== RoleType.AGENT) {
@@ -360,16 +397,16 @@ export class LeadService {
 
     try {
       return await this.prismaService.lead.update({
-        where: { lead_id: leadId },
+        where: { id: leadId },
         data: { agentId: body.agentId },
         select: {
-          lead_id: true,
-          post_id: true,
+          id: true,
+          postId: true,
           buyerId: true,
           agentId: true,
           status: true,
           updatedAt: true,
-          agent: { select: { user_id: true, name: true, email: true } },
+          agent: { select: { id: true, name: true, email: true } },
         },
       });
     } catch (error) {
@@ -395,8 +432,8 @@ export class LeadService {
     }
 
     const exist = await this.prismaService.lead.findFirst({
-      where: { lead_id: leadId, deletedAt: null },
-      select: { lead_id: true },
+      where: { id: leadId, deletedAt: null },
+      select: { id: true },
     });
 
     if (!exist) {
@@ -409,10 +446,10 @@ export class LeadService {
 
     try {
       return await this.prismaService.lead.update({
-        where: { lead_id: leadId },
+        where: { id: leadId },
         data: { deletedAt: new Date() },
         select: {
-          lead_id: true,
+          id: true,
           deletedAt: true,
         },
       });
@@ -423,5 +460,58 @@ export class LeadService {
         ErrorCode.INVALID_INPUT,
       );
     }
+  }
+
+  async getMyLeads(query: GetMyLeadsDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new ApiException(
+        `Unauthorized`,
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    const paging = assignPaging(query);
+
+    const where: Prisma.LeadWhereInput = {
+      deletedAt: null,
+      buyerId: user.id,
+    };
+
+    const [leads, total] = await Promise.all([
+      this.prismaService.lead.findMany({
+        where,
+        skip: paging.skip,
+        take: paging.pageSize,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          post: {
+            select: {
+              id: true,
+              postTitle: true,
+              postStatus: true,
+              property: {
+                select: {
+                  id: true,
+                  title: true,
+                  price: true,
+                  location: true,
+                },
+              },
+            }
+          },
+          agent: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            }
+          }
+        }
+      }),
+      this.prismaService.lead.count({ where }),
+    ]);
+
+    return returnPaging(leads, total, paging);
   }
 }

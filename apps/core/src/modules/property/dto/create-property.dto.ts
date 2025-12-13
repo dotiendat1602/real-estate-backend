@@ -134,28 +134,28 @@ export class CreatePropertyDto {
   @Type(() => Number)
   @IsInt()
   @IsPositive()
-  category_id: number;
+  categoryId: number;
 
   @ApiPropertyOptional({ description: 'Ward id (FK)', example: 1001 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  ward_id?: number;
+  wardId?: number;
 
   @ApiPropertyOptional({ description: 'District id (FK)', example: 769 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  district_id?: number;
+  districtId?: number;
 
   @ApiPropertyOptional({ description: 'Province id (FK)', example: 79 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  province_id?: number;
+  provinceId?: number;
 
   @ApiPropertyOptional({ enum: Status, example: Status.ACTIVE })
   @IsOptional()
@@ -167,12 +167,12 @@ export class CreatePropertyDto {
     example: [1, 5, 9],
   })
   @IsOptional()
-  amenity_ids?: number[];
+  amenityIds?: number[];
 
   @ApiPropertyOptional({
     description: 'Utilities gắn kèm (utility_id + metadata N-N)',
     example: [{ utility_id: 45, distance_m: 350.25, is_primary: true }],
   })
   @IsOptional()
-  utilities?: Array<{ utility_id: number; distance_m?: number; travel_time_s?: number; is_primary?: boolean; note?: string }>;
+  utilities?: Array<{ id: number; distanceM?: number; travelTimeS?: number; isPrimary?: boolean; note?: string }>;
 }

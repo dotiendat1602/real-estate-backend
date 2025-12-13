@@ -14,6 +14,18 @@ export class PropertyCategoryService {
     private readonly prismaService: PrismaService,
   ) { }
 
+  async getPropertyCategoryMetaData() {
+    const categories = await this.prismaService.propertyCategory.findMany({
+      where: {
+        deletedAt: null,
+      },
+      orderBy: {
+        categoryName: 'asc',
+      }
+    });
+    return categories;
+  }
+
   async getAllPropertyCategory(dto: GetAllPropertyCategoryDto) {
     const pagingParams = assignPaging(dto);
 
@@ -29,13 +41,13 @@ export class PropertyCategoryService {
       const q = pagingParams.search.trim();
       where.OR = [
         {
-          category_name: {
+          categoryName: {
             contains: q,
             mode: "insensitive",
           }
         },
         {
-          category_description: {
+          categoryDescription: {
             contains: q,
             mode: "insensitive",
           }
@@ -49,9 +61,9 @@ export class PropertyCategoryService {
       skip: pagingParams.skip,
       take: pagingParams.pageSize,
       select: {
-        category_id: true,
-        category_name: true,
-        category_description: true,
+        id: true,
+        categoryName: true,
+        categoryDescription: true,
         createdAt: true,
       }
     })
@@ -67,8 +79,8 @@ export class PropertyCategoryService {
     try {
       const newCategory = await this.prismaService.propertyCategory.create({
         data: {
-          category_name: dto.category_name,
-          category_description: dto.category_description ?? "",
+          categoryName: dto.categoryName,
+          categoryDescription: dto.categoryDescription ?? "",
         }
       })
       return newCategory;
@@ -84,7 +96,7 @@ export class PropertyCategoryService {
   async updatePropertyCategory(categoryId: number, dto: UpdatePropertyCategoryDto) {
     const existCategory = await this.prismaService.propertyCategory.findFirst({
       where: {
-        category_id: categoryId,
+        id: categoryId,
         deletedAt: null,
       },
     })
@@ -99,18 +111,18 @@ export class PropertyCategoryService {
     const data: Prisma.PropertyCategoryUpdateInput = {};
 
     if (
-      typeof dto.category_name === 'string' &&
-      dto.category_name.trim() !== '' &&
-      dto.category_name !== existCategory.category_name
+      typeof dto.categoryName === 'string' &&
+      dto.categoryName.trim() !== '' &&
+      dto.categoryName !== existCategory.categoryName
     ) {
       // Kiểm tra trùng tên với bản ghi khác
       const duplicated = await this.prismaService.propertyCategory.findFirst({
         where: {
-          category_name: dto.category_name,
+          categoryName: dto.categoryName,
           deletedAt: null,
-          NOT: { category_id: categoryId },
+          NOT: { id: categoryId },
         },
-        select: { category_id: true },
+        select: { id: true },
       });
       if (duplicated) {
         throw new ApiException(
@@ -119,12 +131,12 @@ export class PropertyCategoryService {
           ErrorCode.INVALID_INPUT,
         );
       }
-      data.category_name = dto.category_name;
+      data.categoryName = dto.categoryName;
     }
 
     try {
       const updateCategory = await this.prismaService.propertyCategory.update({
-        where: { category_id: categoryId },
+        where: { id: categoryId },
         data,
       });
       return updateCategory;
@@ -140,7 +152,7 @@ export class PropertyCategoryService {
   async deletePropertyCategory(categoryId: number) {
     const existCategory = await this.prismaService.propertyCategory.findFirst({
       where: {
-        category_id: categoryId,
+        id: categoryId,
         deletedAt: null,
       },
     })
@@ -155,7 +167,7 @@ export class PropertyCategoryService {
     try {
       const deleteCategory = await this.prismaService.propertyCategory.update({
         where: {
-          category_id: categoryId,
+          id: categoryId,
         },
         data: {
           deletedAt: new Date(),

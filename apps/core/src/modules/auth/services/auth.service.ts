@@ -70,7 +70,7 @@ export class AuthService {
         name: body.name,
         email: body.email,
         password: hashedPassword,
-        role_id: roleAdmin.role_id,
+        roleId: roleAdmin.id,
       },
     });
 
@@ -117,7 +117,7 @@ export class AuthService {
     // Cooldown: chỉ cho phép gửi lại sau OTP_COOLDOWN_MS
     const lastOtp = await this.prismaService.otp.findFirst({
       where: {
-        user_id: user.user_id,
+        userId: user.id,
         purpose: OtpPurpose.RESET_PASSWORD,
       },
       orderBy: { createdAt: 'desc' },
@@ -137,13 +137,13 @@ export class AuthService {
       await this.prismaService.$transaction(async (prisma) => {
         await prisma.otp.deleteMany({
           where: {
-            user_id: user.user_id,
+            userId: user.id,
             purpose: OtpPurpose.RESET_PASSWORD,
           }
         })
         await prisma.otp.create({
           data: {
-            user_id: user.user_id,
+            userId: user.id,
             code: codeHash,
             expireTime: expiresAt,
             purpose: OtpPurpose.RESET_PASSWORD,
@@ -173,7 +173,7 @@ export class AuthService {
     }
     const record = await this.prismaService.otp.findFirst({
       where: {
-        user_id: user.user_id,
+        userId: user.id,
         purpose: OtpPurpose.RESET_PASSWORD,
       },
       orderBy: {
@@ -194,7 +194,7 @@ export class AuthService {
       await this.prismaService.otp.delete({
         where:
         {
-          otp_id: record.otp_id,
+          id: record.id,
           purpose: OtpPurpose.RESET_PASSWORD,
         }
       }).catch(() => { });
@@ -210,7 +210,7 @@ export class AuthService {
       await this.prismaService.otp.delete({
         where:
         {
-          otp_id: record.otp_id,
+          id: record.id,
           purpose: OtpPurpose.RESET_PASSWORD,
         }
       }).catch(() => { });
@@ -224,14 +224,14 @@ export class AuthService {
     const ok = await bcrypt.compare(otp, record.code);
     if (!ok) {
       const updated = await this.prismaService.otp.updateMany({
-        where: { otp_id: record.otp_id, attempts: { lt: this.MAX_ATTEMPTS } },
+        where: { id: record.id, attempts: { lt: this.MAX_ATTEMPTS } },
         data: { attempts: { increment: 1 } },
       });
 
       if (!updated.count) {
         // đã chạm ngưỡng
         await this.prismaService.otp
-          .delete({ where: { otp_id: record.otp_id } })
+          .delete({ where: { id: record.id } })
           .catch(() => { });
         throw new ApiException(
           'Too many attempts',
@@ -246,7 +246,7 @@ export class AuthService {
     await this.prismaService.otp.delete({
       where:
       {
-        otp_id: record.otp_id,
+        id: record.id,
         purpose: OtpPurpose.RESET_PASSWORD,
       }
     }).catch(() => { });
@@ -258,7 +258,7 @@ export class AuthService {
 
     await this.prismaService.passwordResetToken.create({
       data: {
-        user_id: user.user_id,
+        userId: user.id,
         tokenHash,
         expiresAt,
       },
@@ -295,7 +295,7 @@ export class AuthService {
     await this.prismaService.$transaction(async (prisma) => {
       // đổi mật khẩu
       await prisma.user.update({
-        where: { user_id: tokenRow!.user_id },
+        where: { id: tokenRow!.userId },
         data: { password: passwordHash },
       });
 
@@ -308,7 +308,7 @@ export class AuthService {
       // vô hiệu hóa các token khác còn hạn của cùng user
       await prisma.passwordResetToken.updateMany({
         where: {
-          user_id: tokenRow!.user_id,
+          userId: tokenRow!.userId,
           usedAt: null,
           expiresAt: { gt: new Date() },
           NOT: { id: tokenRow.id },
@@ -319,7 +319,7 @@ export class AuthService {
 
     // (khuyên) gửi email thông báo đổi mật khẩu thành công
     try {
-      const user = await this.prismaService.user.findUnique({ where: { user_id: tokenRow.user_id } });
+      const user = await this.prismaService.user.findUnique({ where: { id: tokenRow.userId } });
       if (user?.email) {
         await this.mailerService.sendPasswordChangedNotice(user.email);
       }

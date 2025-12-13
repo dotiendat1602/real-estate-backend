@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from 'libs/modules/prisma/prisma.service';
 import { ConversationService } from './conversation.service';
@@ -19,7 +20,7 @@ import { GetAllMessagesOfConversationDto } from '../dto/get-all-messages-convers
 @Injectable()
 export class MessageService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prismaService: PrismaService,
     private readonly socketGateway: SocketGateway,
     private readonly conversationService: ConversationService,
   ) { }
@@ -38,13 +39,13 @@ export class MessageService {
       throw new ForbiddenException('Unauthenticated');
     }
 
-    const conversation = await this.prisma.conversation.findFirst({
+    const conversation = await this.prismaService.conversation.findFirst({
       where: {
-        conversation_id: conversationId,
+        id: conversationId,
         deletedAt: null,
       },
       select: {
-        conversation_id: true,
+        id: true,
         buyerId: true,
         agentId: true,
       },
@@ -55,8 +56,8 @@ export class MessageService {
     }
 
     const { buyerId, agentId } = conversation;
-    const isBuyer = buyerId != null && buyerId === currentUser.user_id;
-    const isAgent = agentId != null && agentId === currentUser.user_id;
+    const isBuyer = buyerId != null && buyerId === currentUser.id;
+    const isAgent = agentId != null && agentId === currentUser.id;
 
     if (!isBuyer && !isAgent) {
       throw new ForbiddenException(
@@ -64,18 +65,29 @@ export class MessageService {
       );
     }
 
-    const message = await this.prisma.message.create({
-      data: {
-        conversation_id: conversation.conversation_id,
-        senderId: currentUser.user_id,
-        content: dto.content,
-      },
+    const send = await this.prismaService.$transaction(async (prisma) => {
+      const message = await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: currentUser.id,
+          content: dto.content,
+        },
+      });
+
+      const updatedConversation = await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          lastMessageAt: new Date(),
+        },
+      });
+
+      const socketMessage = this.mapToSocketMessage(message);
+      this.socketGateway.broadcastNewMessage(socketMessage);
+
+      return message;
     });
 
-    const socketMessage = this.mapToSocketMessage(message);
-    this.socketGateway.broadcastNewMessage(socketMessage);
-
-    return message;
+    return send;
   }
 
   /**
@@ -89,22 +101,33 @@ export class MessageService {
     const conversation =
       await this.conversationService.createOrGetConversation(
         dto.postId,
-        buyer.user_id,
+        buyer.id,
         dto.agentId,
       );
 
-    const message = await this.prisma.message.create({
-      data: {
-        conversation_id: conversation.conversation_id,
-        senderId: buyer.user_id,
-        content: dto.content,
-      },
+    const send = await this.prismaService.$transaction(async (prisma) => {
+      const message = await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: buyer.id,
+          content: dto.content,
+        },
+      });
+
+      const updatedConversation = await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          lastMessageAt: new Date(),
+        },
+      });
+
+      const socketMessage = this.mapToSocketMessage(message);
+      this.socketGateway.broadcastNewMessage(socketMessage);
+
+      return message;
     });
 
-    const socketMessage = this.mapToSocketMessage(message);
-    this.socketGateway.broadcastNewMessage(socketMessage);
-
-    return { conversation, message };
+    return { conversation, send };
   }
 
   /**
@@ -120,14 +143,14 @@ export class MessageService {
       throw new ForbiddenException('Unauthorized');
     }
 
-    const conversation = await this.prisma.conversation.findFirst({
+    const conversation = await this.prismaService.conversation.findFirst({
       where: {
-        conversation_id: conversationId,
+        id: conversationId,
         deletedAt: null,
       },
       select: {
-        conversation_id: true,
-        post_id: true,
+        id: true,
+        postId: true,
         buyerId: true,
         agentId: true,
       },
@@ -143,9 +166,11 @@ export class MessageService {
       );
     }
 
-    const managerRole = await this.prisma.role.findUnique({
+    const agentId: number = conversation.agentId;
+
+    const managerRole = await this.prismaService.role.findUnique({
       where: {
-        role_id: manager.role_id,
+        id: manager.roleId,
       },
       select: {
         name: true,
@@ -164,34 +189,83 @@ export class MessageService {
       );
     }
 
-    const message = await this.prisma.message.create({
-      data: {
-        conversation_id: conversation.conversation_id,
-        senderId: conversation.agentId,
-        content: dto.content,
-      },
+    const send = await this.prismaService.$transaction(async (prisma) => {
+      const message = await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          senderId: agentId,
+          content: dto.content,
+        },
+      });
+
+      const updatedConversation = await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          lastMessageAt: new Date(),
+        },
+      });
+
+      const socketMessage = this.mapToSocketMessage(message);
+      this.socketGateway.broadcastNewMessage(socketMessage);
+
+      return message;
     });
 
-    const socketMessage = this.mapToSocketMessage(message);
-    this.socketGateway.broadcastNewMessage(socketMessage);
-
-    return { conversation, message };
+    return { conversation, send };
   }
 
   async getMessagesOfConversation(conversationId: number, query: GetAllMessagesOfConversationDto) {
     const paging = assignPaging(query);
 
+    const conversation = await this.conversationService.getById(conversationId);
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
     const [messages, total] = await Promise.all([
-      this.prisma.message.findMany({
+      this.prismaService.message.findMany({
         where: {
-          conversation_id: conversationId,
+          conversationId: conversationId,
           deletedAt: null,
         },
         skip: paging.skip,
         take: paging.take,
         orderBy: { createdAt: 'asc' },
       }),
-      this.prisma.message.count({ where: { conversation_id: conversationId, deletedAt: null } }),
+      this.prismaService.message.count({ where: { conversationId: conversationId, deletedAt: null } }),
+    ]);
+
+    return returnPaging(messages, total, paging);
+  }
+
+  async getUserConversationMessages(conversationId: number, query: GetAllMessagesOfConversationDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    const conversation = await this.conversationService.getById(conversationId);
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    if (conversation.buyerId !== user.id && conversation.agentId !== user.id) {
+      throw new ForbiddenException('You do not have access to this conversation');
+    }
+
+    const paging = assignPaging(query);
+
+    const [messages, total] = await Promise.all([
+      this.prismaService.message.findMany({
+        where: {
+          conversationId: conversationId,
+          deletedAt: null,
+        },
+        skip: paging.skip,
+        take: paging.take,
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prismaService.message.count({ where: { conversationId: conversationId, deletedAt: null } }),
     ]);
 
     return returnPaging(messages, total, paging);
@@ -202,8 +276,8 @@ export class MessageService {
   // ---------------------------------------------------------------------------
   private mapToSocketMessage(message: Message): MessageSocket {
     return {
-      message_id: message.message_id,
-      conversation_id: message.conversation_id,
+      message_id: message.id,
+      conversation_id: message.conversationId,
       senderId: message.senderId,
       content: message.content,
       createdAt: message.createdAt.toISOString(),

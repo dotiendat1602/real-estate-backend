@@ -39,7 +39,7 @@ export class AppointmentService {
     }
     await this.prismaService.auditLog.create({
       data: {
-        user_id: actor.user_id,
+        userId: actor.id,
         action,
         entity: 'Deposit',
         entityId,
@@ -64,7 +64,7 @@ export class AppointmentService {
           post: { postTitle: { contains: q, mode: 'insensitive' } },
         },
         {
-          seller: {
+          agent: {
             OR: [
               { name: { contains: q, mode: 'insensitive' } },
               { phone: { contains: q, mode: 'insensitive' } },
@@ -100,23 +100,23 @@ export class AppointmentService {
       take: pagingParams.pageSize,
       skip: pagingParams.skip,
       select: {
-        appointment_id: true,
+        id: true,
         post: {
           select: {
-            post_id: true,
+            id: true,
             postTitle: true,
           }
         },
         buyer: {
           select: {
-            user_id: true,
+            id: true,
             name: true,
             phone: true,
           }
         },
-        seller: {
+        agent: {
           select: {
-            user_id: true,
+            id: true,
             name: true,
             phone: true,
           }
@@ -138,27 +138,27 @@ export class AppointmentService {
   async getOneAppointment(appointmentId: number) {
     const existAppointment = await this.prismaService.appointment.findFirst({
       where: {
-        appointment_id: appointmentId,
+        id: appointmentId,
         deletedAt: null,
       },
       include: {
         post: {
           select: {
-            post_id: true,
+            id: true,
             postTitle: true,
           }
         },
         buyer: {
           select: {
-            user_id: true,
+            id: true,
             name: true,
             phone: true,
             email: true,
           }
         },
-        seller: {
+        agent: {
           select: {
-            user_id: true,
+            id: true,
             name: true,
             phone: true,
             email: true,
@@ -178,7 +178,7 @@ export class AppointmentService {
   async updateAppointment(appointmentId: number, dto: UpdateAppointmentDto) {
     const existAppointment = await this.prismaService.appointment.findFirst({
       where: {
-        appointment_id: appointmentId,
+        id: appointmentId,
         deletedAt: null,
       }
     })
@@ -193,7 +193,7 @@ export class AppointmentService {
       const updated = await this.prismaService.$transaction(async (prisma) => {
         const appointment = await prisma.appointment.update({
           where: {
-            appointment_id: appointmentId,
+            id: appointmentId,
           },
           data: {
             scheduledAt: dto.scheduledAt ?? existAppointment.scheduledAt,
@@ -219,7 +219,7 @@ export class AppointmentService {
   async deleteAppointment(appointmentId: number) {
     const existAppointment = await this.prismaService.appointment.findFirst({
       where: {
-        appointment_id: appointmentId,
+        id: appointmentId,
         deletedAt: null,
       }
     })
@@ -234,7 +234,7 @@ export class AppointmentService {
       const deleted = await this.prismaService.$transaction(async (prisma) => {
         const appointment = await prisma.appointment.update({
           where: {
-            appointment_id: appointmentId,
+            id: appointmentId,
           },
           data: {
             deletedAt: new Date(),

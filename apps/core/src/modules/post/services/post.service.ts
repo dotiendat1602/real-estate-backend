@@ -1,13 +1,14 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { PrismaService } from "libs/modules/prisma/prisma.service";
-import { GetAllPostsDto } from "./dto/get-all-post.dto";
-import { CreatePostDto, UpdatePostDto } from "./dto/create-post.dto";
+import { GetAllPostsDto } from "../dto/get-all-post.dto";
+import { CreatePostDto, UpdatePostDto } from "../dto/create-post.dto";
 import { assignPaging, returnPaging } from "libs/utils/helpers";
 import { PostStatus, Prisma, User } from "@prisma/client";
 import { ApiException } from "libs/utils/exception";
 import { ItemMessage } from "libs/utils/enum";
 import { ContextProvider } from "libs/utils/providers/context.provider";
-import { RejectPostDto } from "./dto/reject-post.dto";
+import { RejectPostDto } from "../dto/reject-post.dto";
+import { ReportPostDto } from "../dto/report-post.dto";
 
 const SORT_WHITELIST: Record<string, keyof Prisma.PostOrderByWithRelationInput> = {
   postTitle: 'postTitle',
@@ -27,6 +28,93 @@ export class PostService {
     const key = orderKey && SORT_WHITELIST[orderKey] ? SORT_WHITELIST[orderKey] : 'createdAt';
     const order = sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : 'desc';
     return { [key]: order } as Prisma.PostOrderByWithRelationInput;
+  }
+
+  async getAllPublicPosts(query: GetAllPostsDto) {
+    const pagingParams = assignPaging(query);
+
+    const orderBy = this.ensureSort(pagingParams.sortKey, pagingParams.sortOrder);
+
+    const where: Prisma.PostWhereInput = {
+      deletedAt: null,
+      postStatus: PostStatus.APPROVED,
+      approvedAt: { not: null },
+    }
+
+    if (pagingParams.search) {
+      const q = pagingParams.search.trim();
+      Object.assign(where, {
+        postTitle: { contains: q, mode: 'insensitive' },
+      });
+    }
+
+    if (pagingParams.type) Object.assign(where, { postType: pagingParams.type });
+
+    const [posts, total] = await Promise.all([
+      this.prismaService.post.findMany({
+        where,
+        orderBy,
+        skip: pagingParams.skip,
+        take: pagingParams.pageSize,
+        select: {
+          id: true,
+          postTitle: true,
+          postType: true,
+          postContent: true,
+          postStatus: true,
+          property: {
+            select: {
+              id: true,
+              title: true,
+              price: true,
+              images: {
+                select: {
+                  id: true,
+                  imageUrl: true,
+                  isPrimary: true,
+                }
+              },
+            }
+          },
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+            }
+          }
+        }
+      }),
+      this.prismaService.post.count({ where }),
+    ]);
+
+    return returnPaging(posts, total, pagingParams);
+  }
+
+  async getOnePublicPost(postId: number) {
+    const existPost = await this.prismaService.post.findFirst({
+      where: {
+        id: postId,
+        deletedAt: null,
+        postStatus: PostStatus.APPROVED,
+        approvedAt: { not: null },
+      },
+      include: {
+        property: true,
+        createdBy: {
+          select: {
+            name: true,
+          }
+        },
+      }
+    });
+
+    if (!existPost) {
+      throw new ApiException(
+        `${ItemMessage.NOT_FOUND}: Post #id${postId}`,
+        HttpStatus.NOT_FOUND,
+      )
+    }
+    return existPost;
   }
 
   async getAllPosts(query: GetAllPostsDto) {
@@ -54,19 +142,19 @@ export class PostService {
       skip: pagingParams.skip,
       take: pagingParams.pageSize,
       select: {
-        post_id: true,
+        id: true,
         postTitle: true,
         postType: true,
         postContent: true,
         postStatus: true,
         property: {
           select: {
-            property_id: true,
+            id: true,
             title: true,
             price: true,
             images: {
               select: {
-                image_id: true,
+                id: true,
                 imageUrl: true,
                 isPrimary: true,
               }
@@ -75,7 +163,7 @@ export class PostService {
         },
         createdBy: {
           select: {
-            user_id: true,
+            id: true,
             name: true,
           }
         }
@@ -89,7 +177,7 @@ export class PostService {
   async getOnePost(postId: number) {
     const existPost = await this.prismaService.post.findFirst({
       where: {
-        post_id: postId,
+        id: postId,
         deletedAt: null,
       },
       include: {
@@ -134,22 +222,22 @@ export class PostService {
       const newPost = await this.prismaService.$transaction(async (prisma) => {
         const post = await prisma.post.create({
           data: {
-            property_id: dto.property_id,
+            propertyId: dto.propertyId,
             postTitle: dto.postTitle,
             postContent: dto.postContent ?? '',
             postType: dto.postType ?? 'OTHER',
             postStatus: dto.postStatus ?? PostStatus.PENDING,
-            createdById: creator.user_id,
+            createdById: creator.id,
           },
         });
 
         // optional: AuditLog
         await prisma.auditLog.create({
           data: {
-            user_id: creator.user_id,
+            userId: creator.id,
             action: 'CREATE_POST',
             entity: 'Post',
-            entityId: post.post_id,
+            entityId: post.id,
             payload: { ...dto },
           },
         });
@@ -174,10 +262,18 @@ export class PostService {
         HttpStatus.UNAUTHORIZED,
       )
     }
+    const roleOfLoginUser = await this.prismaService.role.findFirst({
+      where: {
+        id: user.roleId,
+      },
+      select: {
+        name: true,
+      }
+    });
 
     const existPost = await this.prismaService.post.findFirst({
       where: {
-        post_id: postId,
+        id: postId,
         deletedAt: null,
       },
     })
@@ -187,13 +283,23 @@ export class PostService {
         HttpStatus.NOT_FOUND,
       )
     }
+    // only admin or creator can update
+    const isAdmin = roleOfLoginUser?.name === 'ADMIN';
+    const isOwner = existPost.createdById === user.id;
+
+    if (!isAdmin && !isOwner) {
+      throw new ApiException(
+        'FORBIDDEN: You do not have permission to update this post',
+        HttpStatus.FORBIDDEN,
+      );
+    }
 
     try {
       const updatedPost = await this.prismaService.$transaction(async (prisma) => {
         const post = await prisma.post.update({
-          where: { post_id: postId },
+          where: { id: postId },
           data: {
-            property_id: dto.property_id ?? existPost.property_id,
+            propertyId: dto.propertyId ?? existPost.propertyId,
             postTitle: dto.postTitle ?? existPost.postTitle,
             postContent: dto.postContent ?? existPost.postContent,
             postType: dto.postType ?? existPost.postType,
@@ -204,7 +310,7 @@ export class PostService {
 
         await prisma.auditLog.create({
           data: {
-            user_id: user.user_id,
+            userId: user.id,
             action: 'UPDATE_POST',
             entity: 'Post',
             entityId: postId,
@@ -232,9 +338,19 @@ export class PostService {
         HttpStatus.UNAUTHORIZED,
       )
     }
+
+    const roleOfLoginUser = await this.prismaService.role.findFirst({
+      where: {
+        id: user.roleId,
+      },
+      select: {
+        name: true,
+      }
+    });
+
     const existPost = await this.prismaService.post.findFirst({
       where: {
-        post_id: postId,
+        id: postId,
         deletedAt: null,
       },
     })
@@ -245,22 +361,34 @@ export class PostService {
       )
     }
 
+    // only admin or creator can update
+    const isAdmin = roleOfLoginUser?.name === 'ADMIN';
+    const isOwner = existPost.createdById === user.id;
+
+    if (!isAdmin && !isOwner) {
+      throw new ApiException(
+        'FORBIDDEN: You do not have permission to update this post',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     try {
       const deletePost = await this.prismaService.$transaction(async (prisma) => {
         // Xử lý các quan hệ N-N
 
         const deleted = await prisma.post.update({
           where: {
-            post_id: postId,
+            id: postId,
           },
           data: {
             deletedAt: new Date(),
+            publishedAt: null,
           }
         })
 
         await prisma.auditLog.create({
           data: {
-            user_id: user.user_id,
+            userId: user.id,
             action: 'SOFT_DELETE_POST',
             entity: 'Post',
             entityId: postId,
@@ -289,7 +417,7 @@ export class PostService {
 
     const existDeletedPost = await this.prismaService.post.findFirst({
       where: {
-        post_id: postId,
+        id: postId,
         deletedAt: { not: null }
       }
     })
@@ -302,13 +430,13 @@ export class PostService {
     try {
       const restored = await this.prismaService.$transaction(async (prisma) => {
         const post = await prisma.post.update({
-          where: { post_id: postId },
+          where: { id: postId },
           data: { deletedAt: null, updatedAt: new Date() },
         });
 
         await prisma.auditLog.create({
           data: {
-            user_id: user.user_id,
+            userId: user.id,
             action: 'RESTORE_POST',
             entity: 'Post',
             entityId: postId,
@@ -333,7 +461,7 @@ export class PostService {
 
     const existPost = await this.prismaService.post.findFirst({
       where: {
-        post_id: postId,
+        id: postId,
         deletedAt: null,
       },
     })
@@ -347,19 +475,19 @@ export class PostService {
     try {
       const approved = await this.prismaService.$transaction(async (prisma) => {
         const updated = await prisma.post.update({
-          where: { post_id: postId },
+          where: { id: postId },
           data: {
-            approvedById: user.user_id,
+            approvedById: user.id,
             approvedAt: new Date(),
             rejectedById: null,
             rejectReason: null,
-            postStatus: PostStatus.PENDING,
+            postStatus: PostStatus.APPROVED,
           },
         });
 
         await prisma.auditLog.create({
           data: {
-            user_id: user.user_id,
+            userId: user.id,
             action: 'APPROVE_POST',
             entity: 'Post',
             entityId: postId,
@@ -383,7 +511,7 @@ export class PostService {
 
     const existPost = await this.prismaService.post.findFirst({
       where: {
-        post_id: postId,
+        id: postId,
         deletedAt: null,
       },
     })
@@ -397,9 +525,9 @@ export class PostService {
     try {
       const rejected = await this.prismaService.$transaction(async (prisma) => {
         const updated = await prisma.post.update({
-          where: { post_id: postId },
+          where: { id: postId },
           data: {
-            rejectedById: user.user_id,
+            rejectedById: user.id,
             rejectReason: dto.rejectReason ?? '',
             approvedById: null,
             approvedAt: null,
@@ -411,7 +539,7 @@ export class PostService {
 
         await prisma.auditLog.create({
           data: {
-            user_id: user.user_id,
+            userId: user.id,
             action: 'REJECT_POST',
             entity: 'Post',
             entityId: postId,
@@ -426,6 +554,99 @@ export class PostService {
     } catch (error) {
       throw new ApiException(
         `Error while rejecting post: Post #id${postId}, error ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      )
+    }
+  }
+
+  async archivePost(postId: number) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) throw new ApiException('UNAUTHORIZED USER', HttpStatus.UNAUTHORIZED);
+
+    const existPost = await this.prismaService.post.findFirst({
+      where: {
+        id: postId,
+        deletedAt: null,
+      }
+    });
+    if (!existPost) {
+      throw new ApiException(
+        `${ItemMessage.NOT_FOUND}: Post #id${postId}`,
+        HttpStatus.NOT_FOUND,
+      )
+    }
+
+    try {
+      const archived = await this.prismaService.$transaction(async (prisma) => {
+        const updated = await prisma.post.update({
+          where: { id: postId },
+          data: {
+            postStatus: PostStatus.ARCHIVED,
+          },
+        });
+
+        await prisma.auditLog.create({
+          data: {
+            userId: user.id,
+            action: 'ARCHIVE_POST',
+            entity: 'Post',
+            entityId: postId,
+          },
+        });
+
+        return updated;
+      });
+      return archived;
+    } catch (error) {
+      throw new ApiException(
+        `Error while archiving post: Post #id${postId}, error ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      )
+    }
+  }
+
+  async reportPost(postId: number, dto: ReportPostDto) {
+    const existPost = await this.prismaService.post.findFirst({
+      where: {
+        id: postId,
+        deletedAt: null,
+      }
+    });
+    if (!existPost) {
+      throw new ApiException(
+        `${ItemMessage.NOT_FOUND}: Post #id${postId}`,
+        HttpStatus.NOT_FOUND,
+      )
+    }
+
+    if (dto.reporterId) {
+      const reporter = await this.prismaService.user.findFirst({
+        where: {
+          id: dto.reporterId,
+          deletedAt: null,
+        }
+      });
+      if (!reporter) {
+        throw new ApiException(
+          `${ItemMessage.NOT_FOUND}: User #id${dto.reporterId}`,
+          HttpStatus.NOT_FOUND,
+        )
+      }
+    }
+
+    try {
+      const report = await this.prismaService.report.create({
+        data: {
+          postId: postId,
+          reporterId: dto.reporterId ?? null,
+          reason: dto.reason,
+        }
+      });
+      return report;
+    }
+    catch (error) {
+      throw new ApiException(
+        `Error while reporting post: Post #id${postId}, error ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       )
     }

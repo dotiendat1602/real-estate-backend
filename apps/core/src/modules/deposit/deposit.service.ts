@@ -53,7 +53,7 @@ export class DepositService {
     }
     await this.prismaService.auditLog.create({
       data: {
-        user_id: actor.user_id,
+        userId: actor.id,
         action,
         entity: 'Deposit',
         entityId,
@@ -65,7 +65,7 @@ export class DepositService {
   private async checkExistDeposit(depositId: number) {
     const existDeposit = await this.prismaService.deposit.findFirst({
       where: {
-        deposit_id: depositId,
+        id: depositId,
       }
     })
     if (!existDeposit) {
@@ -136,7 +136,7 @@ export class DepositService {
       skip: pagingParams.skip,
       take: pagingParams.pageSize,
       select: {
-        deposit_id: true,
+        id: true,
         amount: true,
         status: true,
         transactionRef: true,
@@ -175,7 +175,7 @@ export class DepositService {
   async getOneDeposit(depositId: number) {
     const existDeposit = await this.prismaService.deposit.findFirst({
       where: {
-        deposit_id: depositId,
+        id: depositId,
       },
       include: {
         post: {
@@ -230,12 +230,12 @@ export class DepositService {
     try {
       const updated = await this.prismaService.$transaction(async (prisma) => {
         const dep = await prisma.deposit.update({
-          where: { deposit_id: depositId },
+          where: { id: depositId },
           data: {
             holdExpiresAt: dto.holdExpiresAt ?? undefined,
             note: dto.note ?? undefined,
           },
-          select: { deposit_id: true, holdExpiresAt: true, note: true, provider: true, transactionRef: true, updatedAt: true },
+          select: { id: true, holdExpiresAt: true, note: true, provider: true, transactionRef: true, updatedAt: true },
         });
         await this.logAudit('UPDATE_DEPOSIT', depositId, { ...dto });
         return dep;
@@ -272,7 +272,7 @@ export class DepositService {
             : current.holdExpiresAt ?? null;
 
         const dep = await tx.deposit.update({
-          where: { deposit_id: depositId },
+          where: { id: depositId },
           data: {
             status: DepositStatus.AUTHORIZED,
             provider: payload?.provider ?? current.provider ?? null,
@@ -280,7 +280,7 @@ export class DepositService {
             holdExpiresAt,
           },
           select: {
-            deposit_id: true, status: true, provider: true, transactionRef: true, holdExpiresAt: true,
+            id: true, status: true, provider: true, transactionRef: true, holdExpiresAt: true,
           },
         });
 
@@ -318,14 +318,14 @@ export class DepositService {
         if (current.status !== DepositStatus.AUTHORIZED) { throw new ApiException('Must authorize first.', HttpStatus.BAD_REQUEST); }
 
         const dep = await tx.deposit.update({
-          where: { deposit_id: depositId },
+          where: { id: depositId },
           data: {
             status: DepositStatus.CONFIRMED,
             confirmedAt: new Date(),
             paidAt: current.paidAt ?? new Date(),
           },
           select: {
-            deposit_id: true, status: true, confirmedAt: true, paidAt: true, post_id: true,
+            id: true, status: true, confirmedAt: true, paidAt: true, postId: true,
           },
         });
 
@@ -360,12 +360,12 @@ export class DepositService {
     try {
       const updated = await this.prismaService.$transaction(async (tx) => {
         const dep = await tx.deposit.update({
-          where: { deposit_id: depositId },
+          where: { id: depositId },
           data: {
             status: DepositStatus.REFUNDED,
-            releasedAt: new Date(), // mốc giải phóng
+            releasedAt: new Date(),
           },
-          select: { deposit_id: true, status: true, releasedAt: true },
+          select: { id: true, status: true, releasedAt: true },
         });
 
         await this.logAudit('REFUND_DEPOSIT', depositId, {
@@ -392,12 +392,12 @@ export class DepositService {
     try {
       const updated = await this.prismaService.$transaction(async (tx) => {
         const dep = await tx.deposit.update({
-          where: { deposit_id: depositId },
+          where: { id: depositId },
           data: {
             status: DepositStatus.CANCELLED,
             releasedAt: new Date(),
           },
-          select: { deposit_id: true, status: true, releasedAt: true },
+          select: { id: true, status: true, releasedAt: true },
         });
 
         await this.logAudit('CANCEL_DEPOSIT', depositId, {
@@ -426,12 +426,12 @@ export class DepositService {
     try {
       const updated = await this.prismaService.$transaction(async (tx) => {
         const dep = await tx.deposit.update({
-          where: { deposit_id: depositId },
+          where: { id: depositId },
           data: {
             status: DepositStatus.EXPIRED,
             releasedAt: new Date(),
           },
-          select: { deposit_id: true, status: true, releasedAt: true },
+          select: { id: true, status: true, releasedAt: true },
         });
 
         await this.logAudit('EXPIRE_DEPOSIT', depositId, {
@@ -461,12 +461,12 @@ export class DepositService {
     try {
       const updated = await this.prismaService.$transaction(async (tx) => {
         const dep = await tx.deposit.update({
-          where: { deposit_id: depositId },
+          where: { id: depositId },
           data: {
             status: DepositStatus.FAILED,
             releasedAt: new Date(),
           },
-          select: { deposit_id: true, status: true, releasedAt: true },
+          select: { id: true, status: true, releasedAt: true },
         });
 
         await this.logAudit('FAIL_DEPOSIT', depositId, {

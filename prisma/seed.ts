@@ -40,7 +40,7 @@ async function main() {
   const getPermissionId = (name: SystemPermissionType) => {
     const p = allPermissions.find((perm) => perm.name === name);
     if (!p) throw new Error(`Permission not found: ${name}`);
-    return p.permission_id;
+    return p.id;
   };
 
   // -------------------------------------------------------
@@ -139,24 +139,24 @@ async function main() {
     for (const permId of permissionIds) {
       await prisma.rolesPermissions.upsert({
         where: {
-          role_id_permission_id: {
-            role_id: roleId,
-            permission_id: permId,
+          roleId_permissionId: {
+            roleId: roleId,
+            permissionId: permId,
           },
         },
         update: {},
         create: {
-          role_id: roleId,
-          permission_id: permId,
+          roleId: roleId,
+          permissionId: permId,
         },
       });
     }
   }
 
-  await assignPermissionsToRole(adminRole.role_id, adminPermissionIds);
-  await assignPermissionsToRole(managerRole.role_id, managerPermissionIds);
-  await assignPermissionsToRole(agentRole.role_id, agentPermissionIds);
-  await assignPermissionsToRole(userRole.role_id, userPermissionIds);
+  await assignPermissionsToRole(adminRole.id, adminPermissionIds);
+  await assignPermissionsToRole(managerRole.id, managerPermissionIds);
+  await assignPermissionsToRole(agentRole.id, agentPermissionIds);
+  await assignPermissionsToRole(userRole.id, userPermissionIds);
 
   console.log('Assigned permissions to roles');
 
@@ -173,7 +173,7 @@ async function main() {
       name: 'Default Admin',
       password: bcrypt.hashSync('Password@123', 10),
       phone: '0900000000',
-      role_id: adminRole.role_id,
+      roleId: adminRole.id,
       status: Status.ACTIVE,
     },
   });
@@ -188,7 +188,7 @@ async function main() {
       name: 'Default Agent',
       password: bcrypt.hashSync('Password@123', 10),
       phone: '0900000002',
-      role_id: agentRole.role_id,
+      roleId: agentRole.id,
       status: Status.ACTIVE,
     },
   });
@@ -203,7 +203,7 @@ async function main() {
       name: 'Default User',
       password: bcrypt.hashSync('Password@123', 10),
       phone: '0900000001',
-      role_id: userRole.role_id,
+      roleId: userRole.id,
       status: Status.ACTIVE,
     },
   });
@@ -230,22 +230,22 @@ async function main() {
 
   for (const cat of categorySeeds) {
     await prisma.propertyCategory.upsert({
-      where: { category_name: cat.category_name },
+      where: { categoryName: cat.category_name },
       update: {
-        category_description: cat.category_description,
+        categoryDescription: cat.category_description,
       },
       create: {
-        category_name: cat.category_name,
-        category_description: cat.category_description,
+        categoryName: cat.category_name,
+        categoryDescription: cat.category_description,
       },
     });
   }
 
   const apartmentCategory = await prisma.propertyCategory.findUnique({
-    where: { category_name: 'Căn hộ' },
+    where: { categoryName: 'Căn hộ' },
   });
   const houseCategory = await prisma.propertyCategory.findUnique({
-    where: { category_name: 'Nhà phố' },
+    where: { categoryName: 'Nhà phố' },
   });
 
   if (!apartmentCategory || !houseCategory) {
@@ -267,25 +267,25 @@ async function main() {
   }
 
   let district1 = await prisma.district.findFirst({
-    where: { name: 'Quận 1', province_id: hcm.province_id },
+    where: { name: 'Quận 1', provinceId: hcm.id },
   });
   if (!district1) {
     district1 = await prisma.district.create({
       data: {
         name: 'Quận 1',
-        province_id: hcm.province_id,
+        provinceId: hcm.id,
       },
     });
   }
 
   let benNgheWard = await prisma.ward.findFirst({
-    where: { name: 'Phường Bến Nghé', district_id: district1.district_id },
+    where: { name: 'Phường Bến Nghé', districtId: district1.id },
   });
   if (!benNgheWard) {
     benNgheWard = await prisma.ward.create({
       data: {
         name: 'Phường Bến Nghé',
-        district_id: district1.district_id,
+        districtId: district1.id,
       },
     });
   }
@@ -339,11 +339,11 @@ async function main() {
   }) {
     const found = await prisma.utility.findFirst({
       where: {
-        utility_category: data.utility_category,
-        utility_name: data.utility_name,
-        province_id: data.province_id,
-        district_id: data.district_id,
-        ward_id: data.ward_id,
+        utilityCategory: data.utility_category,
+        utilityName: data.utility_name,
+        provinceId: data.province_id,
+        districtId: data.district_id,
+        wardId: data.ward_id,
       },
     });
 
@@ -351,14 +351,14 @@ async function main() {
 
     return prisma.utility.create({
       data: {
-        utility_category: data.utility_category,
-        utility_name: data.utility_name,
+        utilityCategory: data.utility_category,
+        utilityName: data.utility_name,
         lat: data.lat ? new Prisma.Decimal(data.lat) : undefined,
         lon: data.lon ? new Prisma.Decimal(data.lon) : undefined,
         location: data.location,
-        province_id: data.province_id,
-        district_id: data.district_id,
-        ward_id: data.ward_id,
+        provinceId: data.province_id,
+        districtId: data.district_id,
+        wardId: data.ward_id,
       },
     });
   }
@@ -405,9 +405,9 @@ async function main() {
   for (const u of utilitySeeds) {
     const created = await getOrCreateUtility({
       ...u,
-      province_id: hcm.province_id,
-      district_id: district1.district_id,
-      ward_id: benNgheWard.ward_id,
+      province_id: hcm.id,
+      district_id: district1.id,
+      ward_id: benNgheWard.id,
     });
     utilities.push(created);
   }
@@ -424,7 +424,7 @@ async function main() {
     const found = await prisma.property.findFirst({
       where: {
         title: where.title,
-        owner_id: where.owner_id,
+        ownerId: where.owner_id,
       },
     });
     if (found) return found;
@@ -434,7 +434,7 @@ async function main() {
   // Căn hộ cao cấp Quận 1
   let apartment1 = await getOrCreateProperty({
     title: 'Căn hộ 2PN cao cấp Quận 1, view sông',
-    owner_id: adminUser.user_id,
+    owner_id: adminUser.id,
   });
 
   if (!apartment1) {
@@ -458,11 +458,11 @@ async function main() {
         lat: new Prisma.Decimal('10.780000'),
         lon: new Prisma.Decimal('106.705000'),
         location: 'Quận 1, TP. Hồ Chí Minh',
-        category_id: apartmentCategory.category_id,
-        owner_id: adminUser.user_id,
-        ward_id: benNgheWard.ward_id,
-        district_id: district1.district_id,
-        province_id: hcm.province_id,
+        categoryId: apartmentCategory.id,
+        ownerId: adminUser.id,
+        wardId: benNgheWard.id,
+        districtId: district1.id,
+        provinceId: hcm.id,
         status: Status.ACTIVE,
       },
     });
@@ -471,7 +471,7 @@ async function main() {
   // Nhà phố Quận 1
   let house1 = await getOrCreateProperty({
     title: 'Nhà phố 4x18m trung tâm Quận 1, phù hợp kinh doanh',
-    owner_id: normalUser.user_id,
+    owner_id: normalUser.id,
   });
 
   if (!house1) {
@@ -495,11 +495,11 @@ async function main() {
         lat: new Prisma.Decimal('10.776500'),
         lon: new Prisma.Decimal('106.701500'),
         location: 'Mặt tiền đường trung tâm Quận 1, TP. Hồ Chí Minh',
-        category_id: houseCategory.category_id,
-        owner_id: normalUser.user_id,
-        ward_id: benNgheWard.ward_id,
-        district_id: district1.district_id,
-        province_id: hcm.province_id,
+        categoryId: houseCategory.id,
+        ownerId: normalUser.id,
+        wardId: benNgheWard.id,
+        districtId: district1.id,
+        provinceId: hcm.id,
         status: Status.ACTIVE,
       },
     });
@@ -530,15 +530,15 @@ async function main() {
     if (!amenity) continue;
     await prisma.propertyAmenity.upsert({
       where: {
-        property_id_amenity_id: {
-          property_id: apartment1.property_id,
-          amenity_id: amenity.amenity_id,
+        propertyId_amenityId: {
+          propertyId: apartment1.id,
+          amenityId: amenity.id,
         },
       },
       update: {},
       create: {
-        property_id: apartment1.property_id,
-        amenity_id: amenity.amenity_id,
+        propertyId: apartment1.id,
+        amenityId: amenity.id,
       },
     });
   }
@@ -556,15 +556,15 @@ async function main() {
     if (!amenity) continue;
     await prisma.propertyAmenity.upsert({
       where: {
-        property_id_amenity_id: {
-          property_id: house1.property_id,
-          amenity_id: amenity.amenity_id,
+        propertyId_amenityId: {
+          propertyId: house1.id,
+          amenityId: amenity.id,
         },
       },
       update: {},
       create: {
-        property_id: house1.property_id,
-        amenity_id: amenity.amenity_id,
+        propertyId: house1.id,
+        amenityId: amenity.id,
       },
     });
   }
@@ -576,21 +576,21 @@ async function main() {
   // -------------------------------------------------------
   const apartmentUtilityPairs = [
     {
-      property_id: apartment1.property_id,
+      propertyId: apartment1.id,
       utility_name: 'Vincom Đồng Khởi',
       distance_m: '1200.00',
       travel_time_s: 300,
       is_primary: true,
     },
     {
-      property_id: apartment1.property_id,
+      propertyId: apartment1.id,
       utility_name: 'Trường THPT Lê Quý Đôn',
       distance_m: '2300.00',
       travel_time_s: 600,
       is_primary: false,
     },
     {
-      property_id: apartment1.property_id,
+      propertyId: apartment1.id,
       utility_name: 'Công viên 30/4',
       distance_m: '800.00',
       travel_time_s: 240,
@@ -600,14 +600,14 @@ async function main() {
 
   const houseUtilityPairs = [
     {
-      property_id: house1.property_id,
+      propertyId: house1.id,
       utility_name: 'Ngân hàng Vietcombank Chi nhánh Sài Gòn',
       distance_m: '300.00',
       travel_time_s: 120,
       is_primary: true,
     },
     {
-      property_id: house1.property_id,
+      propertyId: house1.id,
       utility_name: 'Bệnh viện Nhi Đồng 2',
       distance_m: '1500.00',
       travel_time_s: 420,
@@ -627,22 +627,22 @@ async function main() {
 
     await prisma.propertyUtility.upsert({
       where: {
-        property_id_utility_id: {
-          property_id: pair.property_id,
-          utility_id: utility.utility_id,
+        propertyId_utilityId: {
+          propertyId: pair.propertyId,
+          utilityId: utility.id,
         },
       },
       update: {
-        distance_m: new Prisma.Decimal(pair.distance_m),
-        travel_time_s: pair.travel_time_s,
-        is_primary: pair.is_primary,
+        distanceM: new Prisma.Decimal(pair.distance_m),
+        travelTimeS: pair.travel_time_s,
+        isPrimary: pair.is_primary,
       },
       create: {
-        property_id: pair.property_id,
-        utility_id: utility.utility_id,
-        distance_m: new Prisma.Decimal(pair.distance_m),
-        travel_time_s: pair.travel_time_s,
-        is_primary: pair.is_primary,
+        propertyId: pair.propertyId,
+        utilityId: utility.id,
+        distanceM: new Prisma.Decimal(pair.distance_m),
+        travelTimeS: pair.travel_time_s,
+        isPrimary: pair.is_primary,
       },
     });
   }
@@ -659,29 +659,29 @@ async function main() {
     property_id: number,
   ) {
     return prisma.post.findFirst({
-      where: { postTitle, property_id },
+      where: { postTitle, propertyId: property_id },
     });
   }
 
   // Post 1: Bài bán căn hộ (APPROVED + PUBLISHED)
   let postApartmentSale = await getPostByTitleAndProperty(
     'Bán căn hộ 2PN Quận 1, full nội thất',
-    apartment1.property_id,
+    apartment1.id,
   );
 
   if (!postApartmentSale) {
     postApartmentSale = await prisma.post.create({
       data: {
-        property_id: apartment1.property_id,
+        propertyId: apartment1.id,
         postTitle: 'Bán căn hộ 2PN Quận 1, full nội thất',
         postType: PostType.SALE,
         postContent:
           'Bán căn hộ 2 phòng ngủ, full nội thất cao cấp, view sông, ngay trung tâm Quận 1. Tiện ích nội khu đầy đủ: hồ bơi, gym, siêu thị, an ninh 24/7.',
         postStatus: PostStatus.APPROVED,
-        approvedById: adminUser.user_id,
+        approvedById: adminUser.id,
         approvedAt: now,
         publishedAt: now,
-        createdById: agentUser.user_id,
+        createdById: agentUser.id,
       },
     });
   }
@@ -689,19 +689,19 @@ async function main() {
   // Post 2: Bài cho thuê căn hộ (PENDING)
   let postApartmentRent = await getPostByTitleAndProperty(
     'Cho thuê căn hộ 2PN Quận 1, đầy đủ tiện ích',
-    apartment1.property_id,
+    apartment1.id,
   );
 
   if (!postApartmentRent) {
     postApartmentRent = await prisma.post.create({
       data: {
-        property_id: apartment1.property_id,
+        propertyId: apartment1.id,
         postTitle: 'Cho thuê căn hộ 2PN Quận 1, đầy đủ tiện ích',
         postType: PostType.RENT,
         postContent:
           'Cho thuê căn hộ 2 phòng ngủ, nội thất cơ bản, free sử dụng hồ bơi và phòng gym. Phù hợp gia đình trẻ hoặc chuyên gia nước ngoài.',
         postStatus: PostStatus.PENDING,
-        createdById: agentUser.user_id,
+        createdById: agentUser.id,
       },
     });
   }
@@ -709,19 +709,19 @@ async function main() {
   // Post 3: Bài nhà phố (DRAFT)
   let postHouseDraft = await getPostByTitleAndProperty(
     'Nhà phố mặt tiền Quận 1, đang update thông tin',
-    house1.property_id,
+    house1.id,
   );
 
   if (!postHouseDraft) {
     postHouseDraft = await prisma.post.create({
       data: {
-        property_id: house1.property_id,
+        propertyId: house1.id,
         postTitle: 'Nhà phố mặt tiền Quận 1, đang update thông tin',
         postType: PostType.SALE,
         postContent:
           'Bài viết nháp cho nhà phố mặt tiền, sẽ cập nhật đầy đủ thông tin sau.',
         postStatus: PostStatus.DRAFT,
-        createdById: agentUser.user_id,
+        createdById: agentUser.id,
       },
     });
   }
@@ -738,9 +738,9 @@ async function main() {
   ) {
     await prisma.postSlug.upsert({
       where: { slug },
-      update: { post_id: postId, isCurrent },
+      update: { postId, isCurrent },
       create: {
-        post_id: postId,
+        postId,
         slug,
         isCurrent,
       },
@@ -748,17 +748,17 @@ async function main() {
   }
 
   await ensurePostSlug(
-    postApartmentSale.post_id,
+    postApartmentSale.id,
     'ban-can-ho-2pn-quan-1-full-noi-that',
     true,
   );
   await ensurePostSlug(
-    postApartmentRent.post_id,
+    postApartmentRent.id,
     'cho-thue-can-ho-2pn-quan-1-day-du-tien-ich',
     true,
   );
   await ensurePostSlug(
-    postHouseDraft.post_id,
+    postHouseDraft.id,
     'nha-pho-mat-tien-quan-1-dang-update',
     true,
   );
@@ -770,7 +770,7 @@ async function main() {
   // -------------------------------------------------------
   let lead1 = await prisma.lead.findFirst({
     where: {
-      post_id: postApartmentSale.post_id,
+      postId: postApartmentSale.id,
       phone: '0900000001',
     },
   });
@@ -778,8 +778,8 @@ async function main() {
   if (!lead1) {
     lead1 = await prisma.lead.create({
       data: {
-        post_id: postApartmentSale.post_id,
-        buyerId: normalUser.user_id,
+        postId: postApartmentSale.id,
+        buyerId: normalUser.id,
         name: normalUser.name ?? 'Khách mua 1',
         email: normalUser.email,
         phone: '0900000001',
@@ -797,44 +797,44 @@ async function main() {
   // -------------------------------------------------------
   let conversation1 = await prisma.conversation.findFirst({
     where: {
-      post_id: postApartmentSale.post_id,
-      buyerId: normalUser.user_id,
-      agentId: agentUser.user_id,
+      postId: postApartmentSale.id,
+      buyerId: normalUser.id,
+      agentId: agentUser.id,
     },
   });
 
   if (!conversation1) {
     conversation1 = await prisma.conversation.create({
       data: {
-        post_id: postApartmentSale.post_id,
-        buyerId: normalUser.user_id,
-        agentId: agentUser.user_id,
+        postId: postApartmentSale.id,
+        buyerId: normalUser.id,
+        agentId: agentUser.id,
       },
     });
   }
 
   const existingMessages = await prisma.message.findMany({
-    where: { conversation_id: conversation1.conversation_id },
+    where: { conversationId: conversation1.id },
   });
 
   if (existingMessages.length === 0) {
     await prisma.message.createMany({
       data: [
         {
-          conversation_id: conversation1.conversation_id,
-          senderId: normalUser.user_id,
+          conversationId: conversation1.id,
+          senderId: normalUser.id,
           content:
             'Chào anh/chị, mình thấy căn hộ 2PN Quận 1 trên web, còn trống không ạ?',
         },
         {
-          conversation_id: conversation1.conversation_id,
-          senderId: agentUser.user_id,
+          conversationId: conversation1.id,
+          senderId: agentUser.id,
           content:
             'Chào bạn, căn hộ vẫn còn nhé. Bạn muốn xem nhà vào khung giờ nào?',
         },
         {
-          conversation_id: conversation1.conversation_id,
-          senderId: normalUser.user_id,
+          conversationId: conversation1.id,
+          senderId: normalUser.id,
           content: 'Cuối tuần này buổi sáng có được không ạ?',
         },
       ],
@@ -848,9 +848,9 @@ async function main() {
   // -------------------------------------------------------
   let appointment1 = await prisma.appointment.findFirst({
     where: {
-      post_id: postApartmentSale.post_id,
-      buyerId: normalUser.user_id,
-      agentId: agentUser.user_id,
+      postId: postApartmentSale.id,
+      buyerId: normalUser.id,
+      agentId: agentUser.id,
     },
   });
 
@@ -861,9 +861,9 @@ async function main() {
 
     appointment1 = await prisma.appointment.create({
       data: {
-        post_id: postApartmentSale.post_id,
-        buyerId: normalUser.user_id,
-        agentId: agentUser.user_id,
+        postId: postApartmentSale.id,
+        buyerId: normalUser.id,
+        agentId: agentUser.id,
         scheduledAt,
         location: 'Sảnh tiếp tân tòa nhà căn hộ Quận 1',
         status: AppointmentStatus.SCHEDULED,
@@ -886,9 +886,9 @@ async function main() {
   if (!deposit1) {
     deposit1 = await prisma.deposit.create({
       data: {
-        post_id: postApartmentSale.post_id,
-        buyerId: normalUser.user_id,
-        sellerId: adminUser.user_id, // seller/owner (tuỳ nghiệp vụ)
+        postId: postApartmentSale.id,
+        buyerId: normalUser.id,
+        sellerId: adminUser.id, // seller/owner (tuỳ nghiệp vụ)
         amount: new Prisma.Decimal('500000000.00'),
         status: DepositStatus.CONFIRMED,
         provider: 'DemoPay',

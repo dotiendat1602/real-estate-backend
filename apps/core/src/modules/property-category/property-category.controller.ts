@@ -16,6 +16,13 @@ export class PropertyCategoryController {
     private readonly propertyCategoryService: PropertyCategoryService,
   ) { }
 
+  // Endpoint: GET /api/core/v1/property-category/meta-data
+  @Get('meta-data')
+  @HttpCode(HttpStatus.OK)
+  async getPropertyCategoryMetaData() {
+    return this.propertyCategoryService.getPropertyCategoryMetaData();
+  }
+
   @Auth()
   @Get()
   @HttpCode(HttpStatus.OK)
