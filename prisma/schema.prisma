@@ -142,15 +142,17 @@ model User {
   deletedAt DateTime? @map("deleted_at")
 
   // Relations
-  role             Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  createdPosts     Post[]      @relation("PostCreatedBy")
-  approvedPosts    Post[]      @relation("PostApprovedBy")
-  rejectedPosts    Post[]      @relation("PostRejectedBy")
-  propertiesOwned  Property[]  @relation("PropertyOwner")
-  otps             Otp[]
-  favorites        Favorites[]
-  depositsAsBuyer  Deposit[]   @relation("DepositBuyer")
-  depositsAsSeller Deposit[]   @relation("DepositSeller")
+  role            Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdPosts    Post[]      @relation("PostCreatedBy")
+  approvedPosts   Post[]      @relation("PostApprovedBy")
+  rejectedPosts   Post[]      @relation("PostRejectedBy")
+  propertiesOwned Property[]  @relation("PropertyOwner")
+  otps            Otp[]
+  favorites       Favorites[]
+
+  depositsAsBuyer  Deposit[] @relation("DepositBuyer")
+  depositsAsSeller Deposit[] @relation("DepositSeller")
+  depositsAsAgent  Deposit[] @relation("DepositAgent")
 
   leadsAsBuyer Lead[] @relation("LeadBuyer")
   leadsAsAgent Lead[] @relation("LeadAgent")
@@ -499,29 +501,41 @@ model Favorites {
 // -------------------------------------------------------
 
 model Deposit {
-  id             Int           @id @default(autoincrement()) @map("id")
-  postId         Int           @map("post_id")
-  buyerId        Int           @map("buyer_id")
-  sellerId       Int           @map("seller_id")
+  id     Int @id @default(autoincrement()) @map("id")
+  postId Int @map("post_id")
+
+  buyerId  Int  @map("buyer_id")
+  sellerId Int  @map("seller_id") // NEW: chủ thể nhận cọc (owner/landlord/seller)
+  agentId  Int? @map("agent_id")
+
   amount         Decimal       @db.Decimal(18, 2)
   status         DepositStatus @default(PENDING)
   provider       String?
   transactionRef String?       @unique @map("transaction_ref")
-  holdExpiresAt  DateTime?     @map("hold_expires_at")
-  paidAt         DateTime?     @map("paid_at")
-  confirmedAt    DateTime?     @map("confirmed_at")
-  releasedAt     DateTime?     @map("released_at")
-  note           String?       @db.Text
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @default(now()) @updatedAt @map("updated_at")
 
-  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-  buyer  User @relation("DepositBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
-  seller User @relation("DepositSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  holdExpiresAt DateTime? @map("hold_expires_at")
+  paidAt        DateTime? @map("paid_at")
+  confirmedAt   DateTime? @map("confirmed_at")
+  releasedAt    DateTime? @map("released_at")
+  note          String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  buyer  User  @relation("DepositBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller User  @relation("DepositSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  agent  User? @relation("DepositAgent", fields: [agentId], references: [id], onDelete: Restrict)
+
+  // (tuỳ chọn) Nếu muốn chặn 1 buyer đặt cọc trùng cho cùng 1 post (tuỳ nghiệp vụ):
+  // @@unique([postId, buyerId])
 
   @@index([postId])
   @@index([buyerId])
-  @@index([sellerId])
+  @@index([sellerId]) // NEW
+  @@index([agentId])
   @@index([status])
   @@map("deposits")
 }

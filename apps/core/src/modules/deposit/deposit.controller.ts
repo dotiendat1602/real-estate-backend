@@ -15,6 +15,7 @@ import {
 import { GetAllDepositDto } from './dto/get-all-deposit.dto';
 import { UpdateDepositDto } from './dto/update-deposit.dto';
 import { AuthorizeDepositDto } from './dto/authorize-deposit.dto';
+import { SystemPermissionType } from '@prisma/client';
 
 @CoreControllers({
   path: 'deposit',
@@ -25,15 +26,34 @@ export class DepositController {
   constructor(private readonly depositService: DepositService) { }
 
   // LIST
-  @Auth()
+  @Auth([SystemPermissionType.MANAGE_PAYMENT])
   @Get()
   @HttpCode(HttpStatus.OK)
   async getAllDeposits(@Query() query: GetAllDepositDto) {
     return this.depositService.getAllDeposits(query);
   }
 
-  // DETAIL
+  // For user, agent
   @Auth()
+  @Get('me')
+  @HttpCode(HttpStatus.OK)
+  async getMyDeposits(@Query() query: GetAllDepositDto) {
+    return this.depositService.getMyDeposits(query);
+  }
+
+  // For agent to update his/her deposit
+  @Auth()
+  @Patch('me/:depositId')
+  @HttpCode(HttpStatus.OK)
+  async updateMyDeposit(
+    @Param('depositId', ParseIntPipe) depositId: number,
+    @Body() dto: UpdateDepositDto,
+  ) {
+    return this.depositService.updateMyDeposit(depositId, dto);
+  }
+
+  // DETAIL
+  @Auth([SystemPermissionType.MANAGE_PAYMENT])
   @Get(':depositId')
   @HttpCode(HttpStatus.OK)
   async getOneDeposit(@Param('depositId', ParseIntPipe) depositId: number) {
@@ -41,7 +61,7 @@ export class DepositController {
   }
 
   // UPDATE (metadata: holdExpiresAt, note, provider, transactionRef...)
-  @Auth()
+  @Auth([SystemPermissionType.MANAGE_PAYMENT])
   @Patch(':depositId')
   @HttpCode(HttpStatus.OK)
   async updateDeposit(

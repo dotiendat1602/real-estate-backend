@@ -482,4 +482,145 @@ export class DepositService {
       throw new ApiException(`Fail fail-deposit: #id${depositId}, error ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
+  async getMyDeposits(query: GetAllDepositDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new ApiException(
+        `UNAUTHORIZED USER`,
+        HttpStatus.UNAUTHORIZED,
+      )
+    }
+
+    const pagingParams = assignPaging(query);
+
+    const orderBy = this.ensureSort(pagingParams.sortKey, pagingParams.sortOrder);
+
+    const where: Prisma.DepositWhereInput = {
+      buyerId: user.id,
+    };
+
+    if (pagingParams.search) {
+      const q = pagingParams.search.trim();
+      where.OR = [
+        {
+          post: { postTitle: { contains: q, mode: 'insensitive' } },
+        },
+        {
+          seller: {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { phone: { contains: q, mode: 'insensitive' } },
+            ]
+          }
+        },
+        {
+          transactionRef: { contains: q, mode: 'insensitive' },
+        },
+      ]
+    }
+
+    if (pagingParams.date_from || pagingParams.date_to) {
+      where.holdExpiresAt = {};
+      if (pagingParams.date_from) (where.holdExpiresAt as any).gte = new Date(pagingParams.date_from);
+      if (pagingParams.date_to) (where.holdExpiresAt as any).lte = new Date(pagingParams.date_to);
+    }
+
+    if (pagingParams.status) {
+      Object.assign(where, {
+        status: pagingParams.status,
+      })
+    }
+
+    const [deposits, total] = await Promise.all([
+      this.prismaService.deposit.findMany({
+        where,
+        orderBy,
+        skip: pagingParams.skip,
+        take: pagingParams.pageSize,
+        select: {
+          id: true,
+          amount: true,
+          status: true,
+          transactionRef: true,
+          holdExpiresAt: true,
+          provider: true,
+          paidAt: true,
+          confirmedAt: true,
+          releasedAt: true,
+          note: true,
+          post: {
+            select: {
+              property: {
+                select: {
+                  title: true,
+                }
+              }
+            }
+          },
+          seller: {
+            select: {
+              name: true,
+              phone: true,
+            }
+          },
+          createdAt: true,
+          updatedAt: true,
+        }
+      }),
+      this.prismaService.deposit.count({ where }),
+    ]);
+
+    return returnPaging(deposits, total, pagingParams);
+  }
+
+  async updateMyDeposit(depositId: number, dto: UpdateDepositDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new ApiException(
+        `UNAUTHORIZED USER`,
+        HttpStatus.UNAUTHORIZED,
+      )
+    }
+
+    const existDeposit = await this.prismaService.deposit.findFirst({
+      where: {
+        id: depositId,
+        agentId: user.id,
+      }
+    });
+    if (!existDeposit) {
+      throw new ApiException(
+        `${ItemMessage.NOT_FOUND}: Deposit #id${depositId}`,
+        HttpStatus.NOT_FOUND,
+      )
+    }
+
+    // Không cho sửa khi đã kết thúc vòng đời 
+    if (this.FINISHED.has(existDeposit.status)) {
+      throw new ApiException('Cannot update a finished deposit.', HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      const updated = await this.prismaService.$transaction(async (prisma) => {
+        const dep = await prisma.deposit.update({
+          where: { id: depositId },
+          data: {
+            holdExpiresAt: dto.holdExpiresAt ?? undefined,
+            note: dto.note ?? undefined,
+          },
+          select: { id: true, holdExpiresAt: true, note: true, provider: true, transactionRef: true, updatedAt: true },
+        });
+
+        await this.logAudit('UPDATE_MY_DEPOSIT', depositId, { ...dto });
+        return dep;
+      });
+      return updated;
+    } catch (error) {
+      throw new ApiException(
+        `${ItemMessage.FAIL_UPDATE}: Deposit #id${depositId}, error ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      )
+    }
+  }
 }
