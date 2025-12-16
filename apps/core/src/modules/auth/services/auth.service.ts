@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { OtpPurpose, User } from '@prisma/client';
+import { OtpPurpose, RoleType, User } from '@prisma/client';
 import { PrismaService } from 'libs/modules/prisma/prisma.service';
-import { ErrorCode, ItemMessage } from 'libs/utils/enum';
+import { ErrorCode } from 'libs/utils/enum';
 import { ApiException } from 'libs/utils/exception';
 import { generateHash, validateHash } from 'libs/utils/util';
 import { CoreUserLoginDto } from '../dto/login.dto';
@@ -56,13 +56,13 @@ export class AuthService {
 
     const hashedPassword = generateHash(body.password);
 
-    const roleAdmin = await this.prismaService.role.findFirst({
+    const role = await this.prismaService.role.findFirst({
       where: {
-        name: "ADMIN",
+        name: body.role as RoleType,
       }
     });
-    if (!roleAdmin) {
-      throw new ApiException("Database doesn't have role ADMIN");
+    if (!role) {
+      throw new ApiException(`Database doesn't have role ${body.role}`, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     const newUser = await this.prismaService.user.create({
@@ -70,7 +70,7 @@ export class AuthService {
         name: body.name,
         email: body.email,
         password: hashedPassword,
-        roleId: roleAdmin.id,
+        roleId: role.id,
       },
     });
 
@@ -98,7 +98,11 @@ export class AuthService {
       );
     }
 
-    return this.tokenService.signToken(user);
+    const token = await this.tokenService.signToken(user);
+    return {
+      ...token,
+      role: (await this.prismaService.role.findUnique({ where: { id: user.roleId } }))?.name,
+    }
   }
 
   async requestOtp(body: RequestOtpDto) {

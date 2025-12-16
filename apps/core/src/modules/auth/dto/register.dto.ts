@@ -38,4 +38,13 @@ export class CoreUserRegisterDto {
   @IsString()
   @MaxLength(255)
   name: string;
+
+  @ApiProperty({
+    description: 'User role',
+    example: 'USER/AGENT',
+  })
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(255)
+  role: string;
 }

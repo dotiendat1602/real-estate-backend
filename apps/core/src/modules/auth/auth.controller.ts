@@ -25,11 +25,11 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
-  // @Post('register')
-  // @ApiResponseCustom([responseRegisterSuccess, responseRegisterFail])
-  // async register(@Body() body: CoreUserRegisterDto) {
-  //   return this.authService.register(body);
-  // }
+  @Post('register')
+  @ApiResponseCustom([responseRegisterSuccess, responseRegisterFail])
+  async register(@Body() body: CoreUserRegisterDto) {
+    return this.authService.register(body);
+  }
 
   @Post('login')
   @ApiResponseCustom([responseLoginSuccess])

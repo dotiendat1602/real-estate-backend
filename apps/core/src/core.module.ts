@@ -11,7 +11,6 @@ import { CoreConfigService } from './modules/config/core-config.service';
 import { HealthModule } from './modules/health/health.module';
 import { UserModule } from './modules/users/user.module';
 import { LogActionMiddleware } from 'libs/utils/middlewares/log-action.middleware';
-import { InitDataModule } from 'libs/modules/init-data/init-data.module';
 import { PropertyCategoryModule } from './modules/property-category/property-category.module';
 import { PropertyModule } from './modules/property/property.module';
 import { AmenityModule } from './modules/amenity/amenity.module';
@@ -44,7 +43,6 @@ const applications = [
 
 @Module({
   imports: [
-    InitDataModule,
     LoggerModule,
     ConfigModule.register({
       envFilePath: './apps/core/.env',
