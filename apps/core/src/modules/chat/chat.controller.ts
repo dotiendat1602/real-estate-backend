@@ -1,7 +1,5 @@
-// src/modules/chat/chat.controller.ts
 import {
   Body,
-  Controller,
   Get,
   Param,
   ParseIntPipe,
@@ -18,6 +16,7 @@ import { GetAllConversationsDto } from './dto/get-all-conversations.dto';
 import { GetAllMessagesOfConversationDto } from './dto/get-all-messages-conversation.dto';
 import { CoreControllers } from 'libs/utils/decorators/controller-customer.decorator';
 import { SystemPermissionType } from '@prisma/client';
+import { SendMessageChatBotDto } from './dto/send-message-chat-bot.dto';
 
 @CoreControllers({
   path: 'chat',
@@ -114,5 +113,13 @@ export class ChatController {
     @Query() query: GetAllMessagesOfConversationDto,
   ) {
     return this.messageService.getUserConversationMessages(conversationId, query);
+  }
+
+  @Auth()
+  @Post('chat-bot')
+  async sendMessageChatBot(
+    @Body() body: SendMessageChatBotDto,
+  ) {
+    return await this.messageService.sendMessageChatBot(body);
   }
 }

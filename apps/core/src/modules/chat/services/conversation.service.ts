@@ -34,15 +34,11 @@ export class ConversationService {
     };
 
     if (key === 'lastMessageAt') {
-      return [
-        {
-          lastMessageAt: { sort: order, nulls },
-        } as Prisma.ConversationOrderByWithRelationInput,
-      ];
+      return [{ lastMessageAt: { sort: order, nulls } }];
     }
 
     const secondary: Prisma.ConversationOrderByWithRelationInput = {
-      [key]: { sort: order },
+      [key]: order,
     } as Prisma.ConversationOrderByWithRelationInput;
 
     return [lastMessageAtOrder, secondary];
@@ -166,13 +162,23 @@ export class ConversationService {
     if (!user) {
       throw new UnauthorizedException('Unauthorized');
     }
+
+    const userRole = await this.prisma.role.findUnique({
+      where: { id: user.roleId },
+      select: { name: true },
+    });
+
     const paging = assignPaging(query);
 
     const orderBy = this.ensureSort(query.sortKey, query.sortOrder);
 
     const where: Prisma.ConversationWhereInput = {
       deletedAt: null,
-      buyerId: user.id,
+    }
+    if (userRole?.name === 'AGENT') {
+      where.agentId = user.id;
+    } else {
+      where.buyerId = user.id;
     }
 
     const [conversations, total] = await Promise.all([

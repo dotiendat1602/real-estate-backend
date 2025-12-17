@@ -1,4 +1,3 @@
-// src/modules/chat/services/message.service.ts
 import {
   ForbiddenException,
   Injectable,
@@ -16,6 +15,7 @@ import { MessageSocket } from 'libs/utils/enum';
 import { ContextProvider } from 'libs/utils/providers/context.provider';
 import { assignPaging, returnPaging } from 'libs/utils/helpers';
 import { GetAllMessagesOfConversationDto } from '../dto/get-all-messages-conversation.dto';
+import { SendMessageChatBotDto } from '../dto/send-message-chat-bot.dto';
 
 @Injectable()
 export class MessageService {
@@ -269,6 +269,15 @@ export class MessageService {
     ]);
 
     return returnPaging(messages, total, paging);
+  }
+
+  async sendMessageChatBot(body: SendMessageChatBotDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+
   }
 
   // ---------------------------------------------------------------------------
