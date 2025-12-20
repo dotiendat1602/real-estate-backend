@@ -23,6 +23,8 @@ import { AuthorizationModule } from './modules/authorization/authorization.modul
 import { ChatModule } from './modules/chat/chat.module';
 import { SocketModule } from './socket/socket.module';
 import { LeadModule } from './modules/lead/lead.module';
+import { NewsModule } from './modules/news/news.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
 
 const applications = [
   HealthModule,
@@ -39,6 +41,8 @@ const applications = [
   AuthorizationModule,
   ChatModule,
   LeadModule,
+  NewsModule,
+  ContactsModule,
 ];
 
 @Module({

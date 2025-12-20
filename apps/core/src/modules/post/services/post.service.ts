@@ -99,7 +99,37 @@ export class PostService {
         approvedAt: { not: null },
       },
       include: {
-        property: true,
+        property: {
+          include: {
+            images: true,
+            category: true,
+            ward: {
+              select: {
+                name: true,
+              }
+            },
+            district: {
+              select: {
+                name: true,
+              }
+            },
+            province: {
+              select: {
+                name: true,
+              }
+            },
+            propertyAmenities: {
+              select: {
+                amenity: true,
+              }
+            },
+            propertyUtilities: {
+              select: {
+                utility: true,
+              }
+            }
+          }
+        },
         createdBy: {
           select: {
             name: true,

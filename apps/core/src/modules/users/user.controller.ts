@@ -19,6 +19,7 @@ import { CreateUsersDto } from './dto/create-user.dto';
 import { EditUsersDto } from './dto/edit-user.dto';
 import { ChangePasswordDto } from './change-password.dto';
 import { SystemPermissionType } from '@prisma/client';
+import { GetFeaturedAgentsDto } from './dto/get-featured-agents.dto';
 
 @CoreControllers({
   path: 'users',
@@ -84,5 +85,21 @@ export class UserController {
     @Param('userId', ParseIntPipe) userId: number,
   ) {
     return await this.userService.deleteUser(userId);
+  }
+
+  @Get("agents/featured")
+  @HttpCode(HttpStatus.OK)
+  async getFeaturedAgents(
+    @Query() query: GetFeaturedAgentsDto,
+  ) {
+    return await this.userService.getFeaturedAgents(query);
+  }
+
+  @Get("agents/:agentId")
+  @HttpCode(HttpStatus.OK)
+  async getAgentDetail(
+    @Param('agentId', ParseIntPipe) agentId: number,
+  ) {
+    return await this.userService.getAgentDetail(agentId);
   }
 }

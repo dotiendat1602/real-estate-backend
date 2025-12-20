@@ -11,6 +11,7 @@ import { ApiException } from 'libs/utils/exception';
 import { generateHash, validateHash } from 'libs/utils/util';
 import { ErrorCode, ItemMessage } from 'libs/utils/enum';
 import { ChangePasswordDto } from './change-password.dto';
+import { GetFeaturedAgentsDto } from './dto/get-featured-agents.dto';
 
 @Injectable()
 export class UserService {
@@ -212,6 +213,9 @@ export class UserService {
             phone: body.phoneNumber || null,
             password: generateHash(this.DEFAULT_PASSWORD),
             roleId: role.id,
+            agentProfile: body.role === RoleType.AGENT
+              ? { create: { title: null, rating: 0, deals: 0, areas: [], tags: [] } }
+              : undefined,
           },
           select: {
             id: true,
@@ -362,5 +366,122 @@ export class UserService {
         ErrorCode.INVALID_INPUT,
       )
     }
+  }
+
+  async getFeaturedAgents(query: GetFeaturedAgentsDto) {
+    const paging = assignPaging(query);
+
+    const where: Prisma.UserWhereInput = {
+      deletedAt: null,
+      role: {
+        name: RoleType.AGENT,
+      },
+      status: 'ACTIVE',
+    };
+
+    const orderBy: Prisma.UserOrderByWithRelationInput[] = [
+      { agentProfile: { rating: "desc" } },
+      { agentProfile: { deals: "desc" } },
+      { id: "desc" },
+    ];
+
+    if (paging.search) {
+      const q = paging.search.trim();
+      where.OR = [
+        {
+          name: {
+            contains: q,
+            mode: "insensitive"
+          }
+        },
+        {
+          email: {
+            contains: q,
+            mode: "insensitive"
+          }
+        },
+      ]
+    }
+
+    if (paging.area) {
+      where.agentProfile = {
+        areas: {
+          hasSome: [paging.area.trim()],
+        }
+      }
+    }
+
+    if (paging.tag) {
+      where.agentProfile = {
+        tags: {
+          hasSome: [paging.tag.trim()],
+        }
+      }
+    }
+
+    const [agents, total] = await Promise.all([
+      this.prismaService.user.findMany({
+        where,
+        skip: paging.skip,
+        take: paging.pageSize,
+        orderBy,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          agentProfile: {
+            select: {
+              title: true,
+              rating: true,
+              deals: true,
+              areas: true,
+              tags: true,
+            }
+          },
+        }
+      }),
+      this.prismaService.user.count({
+        where,
+      })
+    ]);
+
+    return returnPaging(agents, total, paging);
+  }
+
+  async getAgentDetail(agentId: number) {
+    const agent = await this.prismaService.user.findFirst({
+      where: {
+        id: agentId,
+        deletedAt: null,
+        role: {
+          name: RoleType.AGENT,
+        },
+        status: 'ACTIVE',
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        agentProfile: {
+          select: {
+            title: true,
+            rating: true,
+            deals: true,
+            areas: true,
+            tags: true,
+          }
+        },
+      }
+    });
+    if (!agent) {
+      throw new ApiException(
+        `Agent not found`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    return agent;
   }
 }

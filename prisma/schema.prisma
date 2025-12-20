@@ -166,6 +166,8 @@ model User {
   auditLogs            AuditLog[]
   savedSearches        SavedSearch[]
   passwordResetToken   PasswordResetToken[]
+  savedNewsArticles    SavedNewsArticle[]
+  agentProfile         AgentProfile?
 
   @@map("users")
 }
@@ -734,4 +736,114 @@ model LogAction {
   updatedAt DateTime        @default(now()) @updatedAt @map("updated_at")
 
   @@map("log_actions")
+}
+
+// -------------------------------------------------------
+// NEWS
+// -------------------------------------------------------
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model NewsTopic {
+  id   Int    @id @default(autoincrement()) @map("id")
+  name String @unique @map("name")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  articles NewsArticle[]
+
+  @@map("news_topics")
+}
+
+model NewsArticle {
+  id      Int @id @default(autoincrement()) @map("id")
+  topicId Int @map("topic_id")
+
+  title         String  @map("title")
+  excerpt       String? @map("excerpt") @db.Text
+  content       String? @map("content") @db.Text
+  coverImageUrl String? @map("cover_image_url")
+
+  readMin     Int?       @map("read_min")
+  status      NewsStatus @default(DRAFT) @map("status")
+  publishedAt DateTime?  @map("published_at")
+
+  isFeatured Boolean @default(false) @map("is_featured")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  topic   NewsTopic          @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  savedBy SavedNewsArticle[]
+
+  @@index([status, publishedAt])
+  @@index([topicId])
+  @@index([isFeatured])
+  @@map("news_articles")
+}
+
+model SavedNewsArticle {
+  id        Int      @id @default(autoincrement()) @map("id")
+  userId    Int      @map("user_id")
+  articleId Int      @map("article_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId])
+  @@index([articleId])
+  @@map("saved_news_articles")
+}
+
+model NewsletterSubscriber {
+  id        Int      @id @default(autoincrement()) @map("id")
+  email     String   @unique @map("email")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("newsletter_subscribers")
+}
+
+model AgentProfile {
+  id     Int @id @default(autoincrement()) @map("id")
+  userId Int @unique @map("user_id")
+
+  title  String? @db.VarChar(120)
+  rating Decimal @default(0) @db.Decimal(3, 2) // 0.00 - 9.99 (tuỳ bạn)
+  deals  Int     @default(0)
+
+  areas String[] @default([]) // text[]
+  tags  String[] @default([]) // text[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("agent_profiles")
+}
+
+model Contacts {
+  id        Int       @id @default(autoincrement()) @map("id")
+  name      String    @map("name")
+  email     String    @map("email")
+  phone     String?   @map("phone")
+  topic     String    @map("topic")
+  subject   String    @map("subject")
+  message   String    @map("message") @db.Text
+  status    String    @map("status")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("contacts")
 }
