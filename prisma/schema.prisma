@@ -466,19 +466,36 @@ model Post {
   approvedBy User?    @relation("PostApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   rejectedBy User?    @relation("PostRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
 
-  favorites     Favorites[]
-  deposits      Deposit[]
-  leads         Lead[]
-  conversations Conversation[]
-  appointments  Appointment[]
-  slugs         PostSlug[]
-  reports       Report[]
+  favorites      Favorites[]
+  deposits       Deposit[]
+  leads          Lead[]
+  conversations  Conversation[]
+  appointments   Appointment[]
+  slugs          PostSlug[]
+  reports        Report[]
+  postEmbeddings PostEmbedding[]
 
   @@index([postStatus])
   @@index([createdById])
   @@index([propertyId])
   @@index([publishedAt])
   @@map("posts")
+}
+
+model PostEmbedding {
+  id       BigInt @id @default(autoincrement())
+  postId   Int
+  chunkIdx Int    @default(0)
+  content  String @db.Text
+
+  embedding Unsupported("vector(384)")
+
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_embeddings")
 }
 
 model Favorites {
