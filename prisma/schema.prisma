@@ -489,6 +489,7 @@ model PostEmbedding {
   content  String @db.Text
 
   embedding Unsupported("vector(384)")
+  metadata  Json?
 
   createdAt DateTime @default(now())
 
