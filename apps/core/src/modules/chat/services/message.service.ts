@@ -370,7 +370,6 @@ export class MessageService {
           userId: user.id,
           timestamp: new Date().toISOString(),
           topK: aiRequest.topK,
-          filters: aiRequest.filters,
         },
       };
     } catch (error) {
