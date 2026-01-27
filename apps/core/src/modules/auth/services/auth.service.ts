@@ -98,6 +98,11 @@ export class AuthService {
       );
     }
 
+    await this.prismaService.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() },
+    });
+
     const token = await this.tokenService.signToken(user);
     return {
       ...token,

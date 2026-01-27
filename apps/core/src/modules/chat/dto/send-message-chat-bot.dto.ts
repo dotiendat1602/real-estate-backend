@@ -19,5 +19,5 @@ export class SendMessageChatBotDto {
   @IsInt()
   @Min(1)
   @Max(50)
-  topK?: number;
+  topK?: number = 12;
 }

@@ -115,6 +115,15 @@ export class ChatController {
     return this.messageService.getUserConversationMessages(conversationId, query);
   }
 
+  // chat-bot endpoints
+  @Auth()
+  @Get('chat-bot/messages')
+  async getChatBotMessages(
+    @Query() query: GetAllMessagesOfConversationDto,
+  ) {
+    return await this.messageService.getChatBotMessages(query);
+  }
+
   @Auth()
   @Post('chat-bot')
   async sendMessageChatBot(

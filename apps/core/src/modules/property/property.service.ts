@@ -126,6 +126,26 @@ export class PropertyService {
   }
 
   async getAllProperty(query: GetAllPropertyDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new ApiException('Unauthorized', HttpStatus.UNAUTHORIZED);
+    }
+
+    const role = await this.prismaService.role.findFirst({
+      where: {
+        id: user.roleId,
+      },
+      select: {
+        name: true,
+      }
+    });
+
+    if (!role) {
+      throw new ApiException(
+        `${ItemMessage.NOT_FOUND}: Role`,
+        HttpStatus.NOT_FOUND,
+      )
+    }
     const pagingParams = assignPaging(query);
 
     const orderObject = {
@@ -134,6 +154,10 @@ export class PropertyService {
 
     const where: Prisma.PropertyWhereInput = {
       deletedAt: null,
+    }
+
+    if (role.name === 'AGENT') {
+      where.createdById = user.id;
     }
 
     if (pagingParams.search) {
@@ -384,6 +408,20 @@ export class PropertyService {
       throw new ApiException('Unauthorized', HttpStatus.UNAUTHORIZED);
     }
 
+    if (dto.ownerId) {
+      const owner = await this.prismaService.user.findFirst({
+        where: { id: dto.ownerId, deletedAt: null },
+        select: { id: true },
+      });
+
+      if (!owner) {
+        throw new ApiException(
+          `${ItemMessage.NOT_FOUND}: Owner(User)`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+    }
+
     const hasLocs = !!dto.provinceId || !!dto.districtId || !!dto.wardId;
     const hasGeo = dto.lat !== undefined && dto.lon !== undefined;
     if (!hasLocs && !hasGeo) {
@@ -417,7 +455,8 @@ export class PropertyService {
             lon: dto.lon,
             location: dto.location,
             categoryId: dto.categoryId,
-            ownerId: creator.id,
+            ownerId: dto.ownerId,
+            createdById: creator.id,
             provinceId: loc.provinceId ?? null,
             districtId: loc.districtId ?? null,
             wardId: loc.wardId ?? null,

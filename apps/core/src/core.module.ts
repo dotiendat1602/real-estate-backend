@@ -25,6 +25,7 @@ import { SocketModule } from './socket/socket.module';
 import { LeadModule } from './modules/lead/lead.module';
 import { NewsModule } from './modules/news/news.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
+import { UploadFileModule } from './modules/upload-file/upload-file.module';
 
 const applications = [
   HealthModule,
@@ -43,6 +44,7 @@ const applications = [
   LeadModule,
   NewsModule,
   ContactsModule,
+  UploadFileModule,
 ];
 
 @Module({

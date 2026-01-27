@@ -74,7 +74,7 @@ export class AuthorizationService {
     ]);
 
     const data = permissions.map(permission => ({
-      permissionId: permission.id,
+      id: permission.id,
       name: permission.name,
       assignedRolesCount: permission._count.roles,
     }));

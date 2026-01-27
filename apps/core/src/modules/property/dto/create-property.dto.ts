@@ -136,6 +136,12 @@ export class CreatePropertyDto {
   @IsPositive()
   categoryId: number;
 
+  @ApiProperty({ description: 'Property owner id (FK)', example: 3 })
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  ownerId: number;
+
   @ApiPropertyOptional({ description: 'Ward id (FK)', example: 1001 })
   @IsOptional()
   @Type(() => Number)

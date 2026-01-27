@@ -10,7 +10,7 @@ import { ConversationService } from './conversation.service';
 import { CreateMessageDto } from '../dto/create-message.dto';
 import { SendBuyerMessageDto } from '../dto/send-buyer-message.dto';
 import { SendManagerReplyAsAgentDto } from '../dto/send-manager-reply-as-agent.dto';
-import { Message, RoleType, User } from '@prisma/client';
+import { Message, Prisma, RoleType, User } from '@prisma/client';
 import { SocketGateway } from 'apps/core/src/socket/socket.gateway';
 import { MessageSocket } from 'libs/utils/enum';
 import { ContextProvider } from 'libs/utils/providers/context.provider';
@@ -19,6 +19,10 @@ import { GetAllMessagesOfConversationDto } from '../dto/get-all-messages-convers
 import { SendMessageChatBotDto } from '../dto/send-message-chat-bot.dto';
 import { AIChatRequest } from 'libs/utils/constant';
 import { AIClientService } from './ai-client.service';
+
+function toJsonValue<T>(value: T): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
 
 @Injectable()
 export class MessageService {
@@ -297,13 +301,53 @@ export class MessageService {
       topK: body.topK || 12,
     };
 
+    let conversationWithBot;
+
     try {
+      // Tìm hoặc tạo conversation AI bot cho user
+      conversationWithBot = await this.prismaService.chatBotConversation.findFirst({
+        where: {
+          userId: user.id,
+          deletedAt: null,
+        },
+        orderBy: { lastMessageAt: 'desc' },
+      });
+
+      if (!conversationWithBot) {
+        this.logger.log(`Creating new AI bot conversation for user ${user.id}`);
+        conversationWithBot = await this.prismaService.chatBotConversation.create({
+          data: {
+            userId: user.id,
+            lastMessageAt: new Date(),
+          },
+        });
+
+        await this.prismaService.chatBotMessage.create({
+          data: {
+            chatbotConversationId: conversationWithBot.id,
+            senderType: 'CHATBOT',
+            content: 'Hello! How can I assist you with your real estate needs today?',
+          },
+        });
+      }
+
+      const userMessage = await this.prismaService.chatBotMessage.create({
+        data: {
+          chatbotConversationId: conversationWithBot.id,
+          senderType: 'USER',
+          content: body.message.trim(),
+          metadata: {
+            topK: aiRequest.topK,
+          },
+        },
+      });
+
       // Gọi AI service
       const aiResponse = await this.aiClientService.chat(aiRequest);
 
       this.logger.log(`AI bot responded to user ${user.id} with ${aiResponse.citations.length} citations`);
 
-      // Enrich citations với thông tin post từ DB (optional)
+      // Enrich citations với thông tin post từ DB
       const postIds = aiResponse.citations
         .map(c => c.postId)
         .filter(id => id != null);
@@ -323,6 +367,16 @@ export class MessageService {
             postType: true,
             property: {
               select: {
+                images: {
+                  select: {
+                    imageUrl: true,
+                  },
+                  orderBy: [
+                    { isPrimary: 'desc' },
+                    { createdAt: 'desc' },
+                  ],
+                  take: 1,
+                },
                 price: true,
                 area: true,
                 location: true,
@@ -350,6 +404,7 @@ export class MessageService {
               ...citation,
               postTitle: post.postTitle,
               postType: post.postType,
+              imageUrl: post.property?.images?.[0]?.imageUrl ?? null,
               price: post.property?.price,
               area: post.property?.area,
               location: post.property?.location,
@@ -363,7 +418,47 @@ export class MessageService {
         });
       }
 
+      const citationsJson = toJsonValue(
+        enrichedCitations.map((c) => ({
+          ...c,
+
+          postId: c.postId ?? null,
+          chunkIndex: (c as any).chunkIndex ?? null,
+          score: (c as any).score ?? null,
+
+          postTitle: (c as any).postTitle ?? null,
+          postType: (c as any).postType ?? null,
+          price: (c as any).price ?? null,
+          area: (c as any).area ?? null,
+          location: (c as any).location ?? null,
+          province: (c as any).province ?? null,
+          district: (c as any).district ?? null,
+          ward: (c as any).ward ?? null,
+          bedrooms: (c as any).bedrooms ?? null,
+        }))
+      ) as Prisma.InputJsonValue;
+
+      const botMessage = await this.prismaService.chatBotMessage.create({
+        data: {
+          chatbotConversationId: conversationWithBot.id,
+          senderType: 'CHATBOT',
+          content: aiResponse.answer,
+          metadata: {
+            citations: citationsJson,
+            citationCount: enrichedCitations.length,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      await this.prismaService.chatBotConversation.update({
+        where: { id: conversationWithBot.id },
+        data: { lastMessageAt: new Date() },
+      });
+
       return {
+        conversationId: conversationWithBot.id,
+        userMessageId: userMessage.id,
+        botMessageId: botMessage.id,
         answer: aiResponse.answer,
         citations: enrichedCitations,
         metadata: {
@@ -379,6 +474,58 @@ export class MessageService {
       );
       throw error;
     }
+  }
+
+  async getChatBotMessages(query: GetAllMessagesOfConversationDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    let conversationWithBot = await this.prismaService.chatBotConversation.findFirst({
+      where: {
+        userId: user.id,
+        deletedAt: null,
+      },
+      orderBy: { lastMessageAt: 'desc' },
+    });
+
+    if (!conversationWithBot) {
+      conversationWithBot = await this.prismaService.chatBotConversation.create({
+        data: {
+          userId: user.id,
+          lastMessageAt: new Date(),
+        },
+      });
+      await this.prismaService.chatBotMessage.create({
+        data: {
+          chatbotConversationId: conversationWithBot.id,
+          senderType: 'CHATBOT',
+          content: 'Hello! How can I assist you with your real estate needs today?',
+        },
+      });
+    }
+
+    const pagingMessages = assignPaging(query);
+
+    const where: Prisma.ChatBotMessageWhereInput = {
+      chatbotConversationId: conversationWithBot.id,
+      deletedAt: null,
+    };
+
+    const [messages, total] = await Promise.all([
+      this.prismaService.chatBotMessage.findMany({
+        where,
+        skip: pagingMessages.skip,
+        take: pagingMessages.take,
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prismaService.chatBotMessage.count({
+        where,
+      }),
+    ]);
+
+    return returnPaging(messages, total, pagingMessages);
   }
 
   // ---------------------------------------------------------------------------

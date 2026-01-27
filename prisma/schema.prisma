@@ -157,17 +157,19 @@ model User {
   leadsAsBuyer Lead[] @relation("LeadBuyer")
   leadsAsAgent Lead[] @relation("LeadAgent")
 
-  conversationsAsBuyer Conversation[]       @relation("ConvBuyer")
-  conversationsAsAgent Conversation[]       @relation("ConvAgent")
-  messages             Message[]            @relation("MsgSender")
-  appointmentsAsBuyer  Appointment[]        @relation("ApptBuyer")
-  appointmentsAsAgent  Appointment[]        @relation("ApptAgent")
-  reports              Report[]             @relation("ReportReporter")
+  conversationsAsBuyer Conversation[]        @relation("ConvBuyer")
+  conversationsAsAgent Conversation[]        @relation("ConvAgent")
+  messages             Message[]             @relation("MsgSender")
+  appointmentsAsBuyer  Appointment[]         @relation("ApptBuyer")
+  appointmentsAsAgent  Appointment[]         @relation("ApptAgent")
+  reports              Report[]              @relation("ReportReporter")
   auditLogs            AuditLog[]
   savedSearches        SavedSearch[]
   passwordResetToken   PasswordResetToken[]
   savedNewsArticles    SavedNewsArticle[]
   agentProfile         AgentProfile?
+  chatBotConversations ChatBotConversation[]
+  properties           Property[]
 
   @@map("users")
 }
@@ -317,7 +319,8 @@ model Property {
   lon             Decimal?         @db.Decimal(9, 6)
   location        String?
   categoryId      Int              @map("category_id")
-  ownerId         Int              @map("owner_id")
+  ownerId         Int?             @map("owner_id")
+  createdById     Int?             @map("created_by_id")
   wardId          Int?             @map("ward_id")
   districtId      Int?             @map("district_id")
   provinceId      Int?             @map("province_id")
@@ -327,11 +330,12 @@ model Property {
   deletedAt       DateTime?        @map("deleted_at")
 
   // Relations
-  category PropertyCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  owner    User             @relation("PropertyOwner", fields: [ownerId], references: [id], onDelete: Restrict)
-  ward     Ward?            @relation(fields: [wardId], references: [id], onDelete: SetNull)
-  district District?        @relation(fields: [districtId], references: [id], onDelete: SetNull)
-  province Province?        @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  category  PropertyCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  owner     User?            @relation("PropertyOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  createdBy User?            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  ward      Ward?            @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  district  District?        @relation(fields: [districtId], references: [id], onDelete: SetNull)
+  province  Province?        @relation(fields: [provinceId], references: [id], onDelete: SetNull)
 
   images            PropertyImage[]
   propertyAmenities PropertyAmenity[]
@@ -864,4 +868,45 @@ model Contacts {
   deletedAt DateTime? @map("deleted_at")
 
   @@map("contacts")
+}
+
+// -------------------------------------------------------
+// CHATBOT CONVERSATIONS - MESSAGES
+// -------------------------------------------------------
+
+enum ChatParticipantType {
+  USER
+  CHATBOT
+}
+
+model ChatBotConversation {
+  id            Int       @id @default(autoincrement()) @map("id")
+  userId        Int       @map("user_id")
+  lastMessageAt DateTime? @map("last_message_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime? @default(now()) @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatBotMessage[]
+
+  @@index([userId])
+  @@map("chatbot_conversations")
+}
+
+model ChatBotMessage {
+  id                    Int                 @id @default(autoincrement()) @map("id")
+  chatbotConversationId Int                 @map("chatbot_conversation_id")
+  senderType            ChatParticipantType @map("sender_type")
+  content               String              @db.Text
+  metadata              Json? // Lưu citations, topK, v.v.
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime?           @default(now()) @updatedAt @map("updated_at")
+  deletedAt             DateTime?           @map("deleted_at")
+
+  chatbotConversation ChatBotConversation @relation(fields: [chatbotConversationId], references: [id], onDelete: Cascade)
+
+  @@index([chatbotConversationId])
+  @@index([senderType])
+  @@map("chatbot_messages")
 }

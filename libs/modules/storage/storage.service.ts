@@ -92,9 +92,17 @@ export class StorageService {
 
       return results;
     } catch (error) {
-      // Failed to upload file
+      console.error("S3 upload error", {
+        code: error.code,
+        message: error.message,
+        statusCode: error.statusCode,
+        requestId: error.requestId,
+        extendedRequestId: error.extendedRequestId,
+        region: this.configService.get<string>("AWS_REGION"),
+        bucket: this.configService.get<string>("AWS_S3_BUCKET"),
+      });
       throw new InternalServerErrorException(
-        `ファイルのアップロードに失敗しました: ${error.message}`,
+        `Failed to upload file: ${error.message}`,
       );
     }
   }
@@ -137,8 +145,7 @@ export class StorageService {
     try {
       const bucket = this.configService.get<string>('AWS_S3_BUCKET');
       if (!bucket) {
-        // AWS S3 bucket not configured
-        throw new InternalServerErrorException('AWS S3 バケットが設定されていません');
+        throw new InternalServerErrorException('AWS S3 bucket is not configured');
       }
 
       const key = this.getObjectKeyFromUrl(fileUrl);
@@ -169,8 +176,7 @@ export class StorageService {
       }
     } catch (error) {
       throw new InternalServerErrorException(
-        // Failed to delete file
-        `ファイルの削除に失敗しました: ${error.message}`,
+        `Failed to delete file: ${error.message}`,
       );
     }
   }
@@ -181,7 +187,7 @@ export class StorageService {
       return decodeURIComponent(urlObj.pathname.slice(1));
     } catch (error) {
       // Invalid S3 URL
-      throw new InternalServerErrorException('無効なS3 URL');
+      throw new InternalServerErrorException('Invalid S3 URL');
     }
   }
 
