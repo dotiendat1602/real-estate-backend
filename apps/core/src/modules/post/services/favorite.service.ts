@@ -27,6 +27,7 @@ export class FavoriteService {
       this.prismaService.favorites.findMany({
         where: {
           userId: user.id,
+          deletedAt: null,
         },
         skip: paging.skip,
         take: paging.take,
@@ -36,7 +37,37 @@ export class FavoriteService {
         include: {
           post: {
             include: {
-              property: true,
+              property: {
+                include: {
+                  images: true,
+                  category: true,
+                  ward: {
+                    select: {
+                      name: true,
+                    }
+                  },
+                  district: {
+                    select: {
+                      name: true,
+                    }
+                  },
+                  province: {
+                    select: {
+                      name: true,
+                    }
+                  },
+                  propertyAmenities: {
+                    select: {
+                      amenity: true,
+                    }
+                  },
+                  propertyUtilities: {
+                    select: {
+                      utility: true,
+                    }
+                  }
+                }
+              },
             }
           }
         }
@@ -44,6 +75,7 @@ export class FavoriteService {
       this.prismaService.favorites.count({
         where: {
           userId: user.id,
+          deletedAt: null,
         },
       })
     ]);

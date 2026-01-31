@@ -30,12 +30,13 @@ export class PostController {
   }
 
   // Endpoint: GET /api/core/v1/post/public/:postId
-  @Get('public/:postId')
+  @Get('public/:postId/:userId?')
   @HttpCode(HttpStatus.OK)
   async getOnePublicPost(
     @Param('postId', ParseIntPipe) postId: number,
+    @Param('userId', ParseIntPipe) userId?: number,
   ) {
-    return await this.postService.getOnePublicPost(postId);
+    return await this.postService.getOnePublicPost(postId, userId);
   }
 
   // Endpoint: POST /api/core/v1/post/public/:postId/reports

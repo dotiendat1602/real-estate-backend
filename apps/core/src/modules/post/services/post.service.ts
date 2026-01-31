@@ -3,7 +3,7 @@ import { PrismaService } from "libs/modules/prisma/prisma.service";
 import { GetAllPostsDto } from "../dto/get-all-post.dto";
 import { CreatePostDto, UpdatePostDto } from "../dto/create-post.dto";
 import { assignPaging, returnPaging } from "libs/utils/helpers";
-import { PostStatus, Prisma, User } from "@prisma/client";
+import { PostStatus, Prisma, RoleType, User } from "@prisma/client";
 import { ApiException } from "libs/utils/exception";
 import { ItemMessage } from "libs/utils/enum";
 import { ContextProvider } from "libs/utils/providers/context.provider";
@@ -392,7 +392,7 @@ export class PostService {
     return returnPaging(posts, total, pagingParams);
   }
 
-  async getOnePublicPost(postId: number) {
+  async getOnePublicPost(postId: number, userId?: number) {
     const existPost = await this.prismaService.post.findFirst({
       where: {
         id: postId,
@@ -437,6 +437,14 @@ export class PostService {
             name: true,
           }
         },
+        favorites: {
+          where: {
+            userId,
+            postId,
+            deletedAt: null,
+          },
+          select: { id: true }
+        },
       }
     });
 
@@ -450,12 +458,28 @@ export class PostService {
   }
 
   async getAllPosts(query: GetAllPostsDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new ApiException(
+        "UNAUTHORIZED USER",
+        HttpStatus.UNAUTHORIZED,
+      )
+    }
+
+    const role = await this.prismaService.role.findFirst({
+      where: { id: user.roleId },
+      select: { name: true }
+    });
     const pagingParams = assignPaging(query);
 
     const orderBy = this.ensureSort(pagingParams.sortKey, pagingParams.sortOrder);
 
     const where: Prisma.PostWhereInput = {
       deletedAt: null,
+    }
+
+    if (role?.name == RoleType.AGENT) {
+      where.createdById = user.id;
     }
 
     if (pagingParams.search) {
