@@ -4,16 +4,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateLeadDto {
   @ApiProperty({ description: 'ID of the post the lead is interested in' })
+  @IsNotEmpty()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   postId: number;
-
-  @ApiProperty({ description: 'ID of the buyer making the inquiry' })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  buyerId: number;
 
   @ApiPropertyOptional({ description: 'Name of the lead' })
   @IsOptional()

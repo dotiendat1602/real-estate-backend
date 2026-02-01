@@ -439,7 +439,7 @@ export class PostService {
         },
         favorites: {
           where: {
-            userId,
+            userId: userId || -1,
             postId,
             deletedAt: null,
           },

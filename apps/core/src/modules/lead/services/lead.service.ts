@@ -15,11 +15,15 @@ import { GetMyLeadsDto } from '../dto/get-my-leads.dto';
 export class LeadService {
   constructor(private readonly prismaService: PrismaService) { }
 
-  private buildLeadAccessWhere(authUser: User): Prisma.LeadWhereInput {
+  private async buildLeadAccessWhere(authUser: User): Promise<Prisma.LeadWhereInput> {
     // Admin/Manager: thấy tất cả
     // Agent: chỉ thấy lead được assign cho mình (agentId = mình)
     // (Nếu bạn muốn agent thấy lead theo post do mình tạo: mở rộng thêm OR)
-    const roleName = (authUser as any)?.role?.name as RoleType | undefined;
+    const roleName = await this.prismaService.role.findFirst({
+      where: { id: authUser.roleId },
+      select: { name: true },
+    }).then(r => r?.name as RoleType | undefined);
+    console.log('authUser in LeadService:', authUser, 'roleName:', roleName);
 
     if (roleName === RoleType.ADMIN || roleName === RoleType.MANAGER) {
       return { deletedAt: null };
@@ -43,11 +47,12 @@ export class LeadService {
     const pagingParams = assignPaging(query);
 
     const authUser = ContextProvider.getAuthUser<User>();
-    const accessWhere = this.buildLeadAccessWhere(authUser);
+    const accessWhere = await this.buildLeadAccessWhere(authUser);
 
     const where: Prisma.LeadWhereInput = {
       ...accessWhere,
     };
+    console.log('accessWhere:', accessWhere);
 
     if (pagingParams.search) {
       const q = pagingParams.search.trim();
@@ -83,52 +88,53 @@ export class LeadService {
       [sortKey]: pagingParams.sortOrder || 'desc',
     };
 
-    const leads = await this.prismaService.lead.findMany({
-      where,
-      orderBy: orderObject,
-      skip: pagingParams.skip,
-      take: pagingParams.pageSize,
-      select: {
-        id: true,
-        postId: true,
-        buyerId: true,
-        agentId: true,
-        name: true,
-        email: true,
-        phone: true,
-        message: true,
-        note: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-        post: {
-          select: {
-            id: true,
-            postTitle: true,
-            postStatus: true,
-            createdById: true,
+    const [leads, totalItems] = await Promise.all([
+      this.prismaService.lead.findMany({
+        where,
+        orderBy: orderObject,
+        skip: pagingParams.skip,
+        take: pagingParams.pageSize,
+        select: {
+          id: true,
+          postId: true,
+          buyerId: true,
+          agentId: true,
+          name: true,
+          email: true,
+          phone: true,
+          message: true,
+          note: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          post: {
+            select: {
+              id: true,
+              postTitle: true,
+              postStatus: true,
+              createdById: true,
+            },
+          },
+          buyer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
+          },
+          agent: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            },
           },
         },
-        buyer: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-          },
-        },
-        agent: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-          },
-        },
-      },
-    });
-
-    const totalItems = await this.prismaService.lead.count({ where });
+      }),
+      this.prismaService.lead.count({ where })
+    ]);
 
     return returnPaging(leads, totalItems, pagingParams);
   }
@@ -237,7 +243,6 @@ export class LeadService {
       const lead = await this.prismaService.lead.create({
         data: {
           postId: body.postId,
-          buyerId: body.buyerId ?? null,
           agentId: autoAgentId,
           name: body.name ?? null,
           email: body.email ?? null,
