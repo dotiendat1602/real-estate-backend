@@ -35,6 +35,12 @@ enum PostType {
   OTHER
 }
 
+enum PostSource {
+  BATDONGSAN
+  ESTATEIN
+  OTHER
+}
+
 enum FurnitureStatus {
   UNFURNISHED
   PARTLY_FURNISHED
@@ -129,17 +135,18 @@ enum AppointmentStatus {
 // -------------------------------------------------------
 
 model User {
-  id        Int       @id @default(autoincrement()) @map("id")
-  roleId    Int       @map("role_id")
-  email     String    @unique
-  name      String?
-  password  String
-  phone     String?
-  lastLogin DateTime? @map("last_login")
-  status    Status    @default(ACTIVE)
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at")
+  id              Int       @id @default(autoincrement()) @map("id")
+  roleId          Int       @map("role_id")
+  email           String    @unique
+  name            String?
+  password        String
+  phone           String?
+  lastLogin       DateTime? @map("last_login")
+  status          Status    @default(ACTIVE)
+  aiChatSessionId Int?      @map("ai_chat_session_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
 
   // Relations
   role            Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -463,6 +470,10 @@ model Post {
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at")
   deletedAt    DateTime?  @map("deleted_at")
+
+  source    PostSource? @map("source")
+  sourceUrl String?     @map("source_url")
+  sourceUid String?     @map("source_uid") // id hoặc hash từ URL
 
   // Relations
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)

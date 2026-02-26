@@ -18,10 +18,9 @@ import {
 } from './interceptors';
 import './polyfill';
 import { setupSwagger } from './setup-swagger';
-import { Services } from './enum';
 
 export const setupApp = async (
-  appName: Services,
+  appName: string,
   app: NestExpressApplication,
 ) => {
   app.enableCors({ origin: '*' });

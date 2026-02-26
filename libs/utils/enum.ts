@@ -56,6 +56,7 @@ export enum StatusLog {
 
 export enum Services {
   API_CORE = 'core',
+  SCHEDULER = 'api-scheduler',
 }
 
 export enum ItemMessage {

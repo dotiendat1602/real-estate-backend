@@ -6,8 +6,9 @@ import { GetAllPostsDto } from "./dto/get-all-post.dto";
 import { CreatePostDto, UpdatePostDto } from "./dto/create-post.dto";
 import { RejectPostDto } from "./dto/reject-post.dto";
 import { SystemPermissionType } from "@prisma/client";
-import { ReportPostDto } from "./dto/report-post.dto";
+import { ReportPostDto, UpdateReportDto } from "./dto/report-post.dto";
 import { FavoriteService } from "./services/favorite.service";
+import { GetAllReportDto } from "./dto/get-all-report.dto";
 
 @CoreControllers({
   path: 'post',
@@ -47,6 +48,27 @@ export class PostController {
     @Body() dto: ReportPostDto,
   ) {
     return await this.postService.reportPost(postId, dto);
+  }
+
+  // Endpoint: GET /api/core/v1/post/reports
+  @Auth()
+  @Get('reports')
+  @HttpCode(HttpStatus.OK)
+  async getReports(
+    @Query() query: GetAllReportDto,
+  ) {
+    return await this.postService.getReports(query);
+  }
+
+  // Endpoint: PATCH /api/core/v1/post/reports/:id
+  @Auth()
+  @Patch('reports/:reportId')
+  @HttpCode(HttpStatus.OK)
+  async updateReport(
+    @Param('reportId', ParseIntPipe) reportId: number,
+    @Body() dto: UpdateReportDto,
+  ) {
+    return await this.postService.updateReport(reportId, dto);
   }
 
   // Endpoint: GET /api/core/v1/post/favorites

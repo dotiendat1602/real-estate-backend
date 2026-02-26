@@ -17,7 +17,7 @@ import { ContextProvider } from 'libs/utils/providers/context.provider';
 import { assignPaging, returnPaging } from 'libs/utils/helpers';
 import { GetAllMessagesOfConversationDto } from '../dto/get-all-messages-conversation.dto';
 import { SendMessageChatBotDto } from '../dto/send-message-chat-bot.dto';
-import { AIChatRequest } from 'libs/utils/constant';
+import { AIChatRequest, AIChatResponse } from 'libs/utils/constant';
 import { AIClientService } from './ai-client.service';
 
 function toJsonValue<T>(value: T): Prisma.InputJsonValue {
@@ -299,6 +299,7 @@ export class MessageService {
       userId: user.id,
       message: body.message.trim(),
       topK: body.topK || 12,
+      sessionId: user.aiChatSessionId ?? undefined,
     };
 
     let conversationWithBot;
@@ -342,10 +343,14 @@ export class MessageService {
         },
       });
 
-      // Gọi AI service
-      const aiResponse = await this.aiClientService.chat(aiRequest);
+      const aiResponse: AIChatResponse = await this.aiClientService.chat(aiRequest);
 
       this.logger.log(`AI bot responded to user ${user.id} with ${aiResponse.citations.length} citations`);
+
+      await this.prismaService.user.update({
+        where: { id: user.id },
+        data: { aiChatSessionId: aiResponse.sessionId },
+      });
 
       // Enrich citations với thông tin post từ DB
       const postIds = aiResponse.citations

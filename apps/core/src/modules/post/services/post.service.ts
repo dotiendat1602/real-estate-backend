@@ -8,8 +8,9 @@ import { ApiException } from "libs/utils/exception";
 import { ItemMessage } from "libs/utils/enum";
 import { ContextProvider } from "libs/utils/providers/context.provider";
 import { RejectPostDto } from "../dto/reject-post.dto";
-import { ReportPostDto } from "../dto/report-post.dto";
+import { ReportPostDto, UpdateReportDto } from "../dto/report-post.dto";
 import { CoreConfigService } from "../../config/core-config.service";
+import { GetAllReportDto } from "../dto/get-all-report.dto";
 
 const SORT_WHITELIST: Record<string, keyof Prisma.PostOrderByWithRelationInput> = {
   postTitle: 'postTitle',
@@ -1032,6 +1033,64 @@ export class PostService {
     catch (error) {
       throw new ApiException(
         `Error while reporting post: Post #id${postId}, error ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      )
+    }
+  }
+
+  async getReports(query: GetAllReportDto) {
+    const paging = assignPaging(query);
+
+    const [reports, total] = await Promise.all([
+      this.prismaService.report.findMany({
+        where: {},
+        skip: paging.skip,
+        take: paging.pageSize,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          post: {
+            select: {
+              id: true,
+              postTitle: true,
+            }
+          },
+          reporter: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            }
+          }
+        }
+      }),
+      this.prismaService.report.count({ where: {} }),
+    ]);
+
+    return returnPaging(reports, total, paging);
+  }
+
+  async updateReport(reportId: number, dto: UpdateReportDto) {
+    const existReport = await this.prismaService.report.findFirst({
+      where: { id: reportId }
+    });
+    if (!existReport) {
+      throw new ApiException(
+        `${ItemMessage.NOT_FOUND}: Report #id${reportId}`,
+        HttpStatus.NOT_FOUND,
+      )
+    }
+
+    try {
+      const updated = await this.prismaService.report.update({
+        where: { id: reportId },
+        data: {
+          status: dto.status ?? existReport.status,
+        }
+      });
+      return updated;
+    } catch (error) {
+      throw new ApiException(
+        `Error while updating report: Report #id${reportId}, error ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       )
     }

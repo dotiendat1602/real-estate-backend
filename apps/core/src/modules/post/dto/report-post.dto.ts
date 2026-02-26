@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsInt, IsNotEmpty, IsOptional, IsString } from "class-validator";
+import { ReportStatus } from "@prisma/client";
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString } from "class-validator";
 
 export class ReportPostDto {
   @ApiPropertyOptional({
@@ -15,4 +16,14 @@ export class ReportPostDto {
   @IsNotEmpty()
   @IsString()
   reason: string;
+}
+
+export class UpdateReportDto {
+  @ApiProperty({
+    description: 'The status of the report',
+    example: ReportStatus.RESOLVED,
+  })
+  @IsNotEmpty()
+  @IsEnum(ReportStatus)
+  status: ReportStatus;
 }
