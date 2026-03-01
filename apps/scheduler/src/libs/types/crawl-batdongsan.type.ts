@@ -16,7 +16,8 @@ export interface CrawledProperty {
   roadWidth?: number;
 
   furnitureStatus?: 'UNFURNISHED' | 'PARTLY_FURNISHED' | 'FULLY_FURNISHED';
-  legalStatus?: 'FREEHOLD' | 'LEASEHOLD' | 'RED_BOOK' | 'PINK_BOOK' | 'OTHER';
+  legalStatus?: 'FREEHOLD' | 'LEASEHOLD' | 'RED_BOOK' | 'PINK_BOOK' | 'SALE_CONTRACT' | 'OTHER';
+  orientation?: string;
 
   lat?: number;
   lon?: number;

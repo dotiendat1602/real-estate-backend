@@ -52,6 +52,7 @@ enum LegalStatus {
   LEASEHOLD
   RED_BOOK
   PINK_BOOK
+  SALE_CONTRACT // Hợp đồng mua bán
   OTHER
 }
 
