@@ -45,3 +45,5 @@ lerna-debug.log*
 !assets/.gitkeep
 
 .pw-bds-profile
+
+storage

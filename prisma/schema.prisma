@@ -349,6 +349,7 @@ model Property {
   propertyAmenities PropertyAmenity[]
   posts             Post[]
   propertyUtilities PropertyUtility[]
+  planningMatches   PropertyPlanningMatch[]
 
   @@index([status])
   @@index([provinceId, districtId, wardId])
@@ -921,4 +922,139 @@ model ChatBotMessage {
   @@index([chatbotConversationId])
   @@index([senderType])
   @@map("chatbot_messages")
+}
+
+// -------------------------------------------------------
+// PLANNING - Quy hoạch
+// -------------------------------------------------------
+
+enum PlanningSourceType {
+  QHKHSDD_HANOI
+  QUYHOACH_HANOI
+}
+
+enum PlanningLookupStatus {
+  MATCHED
+  NO_MATCH
+  ERROR
+}
+
+enum PlanningConfidence {
+  HIGH
+  MEDIUM
+  LOW
+  UNKNOWN
+}
+
+enum PlanningRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum DocumentDownloadStatus {
+  PENDING
+  DOWNLOADED
+  FAILED
+}
+
+model PlanningCoordinateLookup {
+  id          Int                  @id @default(autoincrement()) @map("id")
+  source      PlanningSourceType
+  lat         Decimal              @db.Decimal(10, 7)
+  lng         Decimal              @db.Decimal(10, 7)
+  kyQuyHoach  String?              @map("ky_quy_hoach")
+  status      PlanningLookupStatus
+  rawResponse Json?                @map("raw_response")
+  queriedAt   DateTime             @default(now()) @map("queried_at")
+  createdAt   DateTime             @default(now()) @map("created_at")
+
+  zones           PlanningZone[]
+  propertyMatches PropertyPlanningMatch[]
+
+  @@unique([lat, lng, kyQuyHoach, source])
+  @@index([lat, lng])
+  @@index([kyQuyHoach])
+  @@map("planning_coordinate_lookups")
+}
+
+model PlanningZone {
+  id                Int      @id @default(autoincrement()) @map("id")
+  lookupId          Int      @map("lookup_id")
+  maHoSo            String?  @map("ma_ho_so")
+  loaiDatHT         String?  @map("loai_dat_ht")
+  tenLoaiDatHT      String?  @map("ten_loai_dat_ht")
+  loaiDatQH         String?  @map("loai_dat_qh")
+  tenLoaiDatQH      String?  @map("ten_loai_dat_qh")
+  rawGeomWkt        String?  @map("raw_geom_wkt") @db.Text
+  geojsonSimplified Json?    @map("geojson_simplified")
+  bbox              Json?
+  attributesJson    Json?    @map("attributes_json")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  lookup          PlanningCoordinateLookup @relation(fields: [lookupId], references: [id], onDelete: Cascade)
+  dossier         PlanningDossier?         @relation(fields: [maHoSo], references: [maHoSo])
+  propertyMatches PropertyPlanningMatch[]
+
+  @@index([lookupId])
+  @@index([maHoSo])
+  @@map("planning_zones")
+}
+
+model PlanningDossier {
+  id           Int                @id @default(autoincrement()) @map("id")
+  source       PlanningSourceType
+  maHoSo       String             @unique @map("ma_ho_so")
+  tenHoSo      String             @map("ten_ho_so")
+  districtName String?            @map("district_name")
+  districtCode String?            @map("district_code")
+  rawResponse  Json?              @map("raw_response")
+  fetchedAt    DateTime           @default(now()) @map("fetched_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at")
+
+  zones     PlanningZone[]
+  documents PlanningDocument[]
+
+  @@index([districtCode])
+  @@map("planning_dossiers")
+}
+
+model PlanningDocument {
+  id             Int                    @id @default(autoincrement()) @map("id")
+  dossierId      Int                    @map("dossier_id")
+  title          String
+  docType        String?                @map("doc_type")
+  format         String?
+  sourcePath     String?                @map("source_path")
+  sourceUrl      String?                @map("source_url") @db.Text
+  downloadStatus DocumentDownloadStatus @default(PENDING) @map("download_status")
+  rawMeta        Json?                  @map("raw_meta")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @default(now()) @updatedAt @map("updated_at")
+
+  dossier PlanningDossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+
+  @@index([dossierId])
+  @@map("planning_documents")
+}
+
+model PropertyPlanningMatch {
+  id              Int                  @id @default(autoincrement()) @map("id")
+  propertyId      Int                  @map("property_id")
+  lookupId        Int?                 @map("lookup_id")
+  zoneId          Int?                 @map("zone_id")
+  status          PlanningLookupStatus
+  riskLevel       PlanningRiskLevel?   @map("risk_level")
+  confidenceLevel PlanningConfidence?  @map("confidence_level")
+  explanation     String?              @db.Text
+  matchedAt       DateTime             @default(now()) @map("matched_at")
+
+  property Property                  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  lookup   PlanningCoordinateLookup? @relation(fields: [lookupId], references: [id], onDelete: SetNull)
+  zone     PlanningZone?             @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId])
+  @@index([status])
+  @@map("property_planning_matches")
 }

@@ -51,8 +51,7 @@ export class StorageService {
   > {
     try {
       const bucket = this.configService.get('AWS_S3_BUCKET');
-      // Missing AWS_S3_BUCKET env
-      if (!bucket) throw new Error('AWS_S3_BUCKET 環境変数が設定されていません');
+      if (!bucket) throw new Error('Missing AWS_S3_BUCKET env');
 
       const addTimestamp = options?.addTimestampPrefix !== false;
       const results: {
