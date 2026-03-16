@@ -14,6 +14,26 @@ export interface AIChatRequest {
     [key: string]: any;
   };
   topK?: number;
+  planningContexts?: PlanningChatContext[];
+}
+
+export interface PlanningChatContext {
+  propertyId: number;
+  planningStatus: string;
+  riskLevel?: string | null;
+  landUseCurrent?: string | null;
+  landUsePlanned?: string | null;
+  dossierCode?: string | null;
+  dossierName?: string | null;
+  checkedAt?: string | null;
+  reportSummaries?: Array<{
+    title: string;
+    docType?: string | null;
+    format?: string | null;
+    sourcePath?: string | null;
+    sourceUrl?: string | null;
+    rawMeta?: Record<string, any> | null;
+  }>;
 }
 
 export interface AICitation {

@@ -1,6 +1,7 @@
 import { Body, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post } from "@nestjs/common";
 import { CoreControllers } from "libs/utils/decorators/controller-customer.decorator";
 import { CoordinateLookupDto } from "./dto/coordinate-lookup.dto";
+import { PlanningExplainDto } from "./dto/planning-explain.dto";
 import { PlanningService } from "./planning.service";
 
 @CoreControllers({
@@ -33,5 +34,14 @@ export class PlanningController {
   @HttpCode(HttpStatus.OK)
   async getPlanningDossier(@Param("maHoSo") maHoSo: string) {
     return await this.planningService.getPlanningDossier(maHoSo);
+  }
+
+  @Post("properties/:propertyId/explain")
+  @HttpCode(HttpStatus.OK)
+  async getPropertyPlanningExplain(
+    @Param("propertyId", ParseIntPipe) propertyId: number,
+    @Body() dto: PlanningExplainDto,
+  ) {
+    return await this.planningService.getPropertyPlanningExplain(propertyId, dto);
   }
 }

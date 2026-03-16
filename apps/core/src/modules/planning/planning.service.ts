@@ -10,6 +10,8 @@ import { PrismaService } from "libs/modules/prisma/prisma.service";
 import { StorageService, UploadedFile } from "libs/modules/storage/storage.service";
 import { ApiException } from "libs/utils/exception";
 import { CoordinateLookupDto } from "./dto/coordinate-lookup.dto";
+import { PlanningExplainDto } from "./dto/planning-explain.dto";
+import { PlanningAiClientService } from "./services/planning-ai-client.service";
 import { QhkhsddHanoiAdapter } from "./services/qhkhsdd-hanoi.adapter";
 import { computeBbox, wktToGeoJson } from "./utils/wkt-to-geojson";
 
@@ -21,6 +23,7 @@ export class PlanningService {
     private readonly prismaService: PrismaService,
     private readonly qhkhsddHanoiAdapter: QhkhsddHanoiAdapter,
     private readonly storageService: StorageService,
+    private readonly planningAiClientService: PlanningAiClientService,
   ) { }
 
   private roundCoordinate(value: number) {
@@ -682,12 +685,41 @@ export class PlanningService {
       documents: dossier.documents.map((doc) => ({
         id: doc.id,
         title: doc.title,
+        docType: doc.docType,
         format: doc.format,
         sourceUrl: doc.sourceUrl,
         sourcePath: doc.sourcePath,
+        rawMeta: doc.rawMeta,
         downloadStatus: doc.downloadStatus,
         createdAt: doc.createdAt,
       })),
     };
+  }
+
+  async getPropertyPlanningExplain(propertyId: number, dto: PlanningExplainDto) {
+    const summary = await this.getPropertyPlanningSummary(propertyId);
+    const dossierCode = summary?.dossier?.code || null;
+    const dossier = dossierCode ? await this.getPlanningDossier(dossierCode).catch(() => null) : null;
+
+    return await this.planningAiClientService.explain({
+      propertyId,
+      question: dto?.question?.trim() || undefined,
+      summary: {
+        planningStatus: summary.planningStatus,
+        riskLevel: summary.riskLevel,
+        landUseCurrent: summary.landUseCurrent,
+        landUsePlanned: summary.landUsePlanned,
+        dossierCode: summary.dossier?.code || null,
+        dossierName: summary.dossier?.name || null,
+        checkedAt: summary.checkedAt ? new Date(summary.checkedAt).toISOString() : null,
+      },
+      documents: (dossier?.documents || []).map((doc) => ({
+        title: this.sanitizeText(doc.title) || "Tai lieu quy hoach",
+        format: this.sanitizeText(doc.format),
+        docType: this.sanitizeText((doc as any)?.docType || null),
+        sourcePath: this.sanitizeText((doc as any)?.sourcePath || null),
+        rawMeta: this.sanitizeJson((doc as any)?.rawMeta || null),
+      })),
+    });
   }
 }
