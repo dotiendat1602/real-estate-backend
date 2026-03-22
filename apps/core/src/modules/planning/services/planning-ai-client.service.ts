@@ -16,10 +16,12 @@ export interface PlanningAiExplainRequest {
     checkedAt: string | null;
   };
   documents: Array<{
+    planningDocumentId?: number;
     title: string;
     format: string | null;
     docType?: string | null;
     sourcePath?: string | null;
+    sourceUrl?: string | null;
     rawMeta?: Record<string, any> | null;
   }>;
 }
@@ -28,6 +30,38 @@ export interface PlanningAiExplainResponse {
   answer: string;
   disclaimer: string;
   highlights: string[];
+}
+
+export interface PlanningAiIngestDocumentRequest {
+  planningDocumentId: number;
+  title: string;
+  sourceUrl: string;
+  format?: string | null;
+  documentType?: string | null;
+  dossierCode?: string | null;
+  city?: string | null;
+  district?: string | null;
+  planYear?: number | null;
+  propertyId?: number | null;
+  rawMeta?: Record<string, any> | null;
+}
+
+export interface PlanningAiIngestRequest {
+  replaceExisting?: boolean;
+  documents: PlanningAiIngestDocumentRequest[];
+}
+
+export interface PlanningAiIngestResponse {
+  ok: boolean;
+  ingestedChunks: number;
+  items: Array<{
+    planningDocumentId: number;
+    title: string;
+    deletedChunks: number;
+    ingestedChunks: number;
+    textChunks: number;
+    tableChunks: number;
+  }>;
 }
 
 @Injectable()
@@ -67,5 +101,27 @@ export class PlanningAiClientService {
     }
 
     throw new ApiException("Không thể phân tích quy hoạch", HttpStatus.SERVICE_UNAVAILABLE);
+  }
+
+  async ingestDocuments(request: PlanningAiIngestRequest): Promise<PlanningAiIngestResponse> {
+    let lastError: any = null;
+
+    for (let attempt = 0; attempt <= this.retries; attempt += 1) {
+      try {
+        const response = await this.client.post<PlanningAiIngestResponse>("/api/planning/ingest-documents", request);
+        return response.data;
+      } catch (error: any) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) {
+      throw new ApiException(
+        "Khong the ket noi AI service de ingest tai lieu quy hoach",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    throw new ApiException("Khong the ingest tai lieu quy hoach", HttpStatus.SERVICE_UNAVAILABLE);
   }
 }

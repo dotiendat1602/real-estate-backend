@@ -2,6 +2,7 @@ import { Body, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post } from "@nes
 import { CoreControllers } from "libs/utils/decorators/controller-customer.decorator";
 import { CoordinateLookupDto } from "./dto/coordinate-lookup.dto";
 import { PlanningExplainDto } from "./dto/planning-explain.dto";
+import { PlanningIngestDto } from "./dto/planning-ingest.dto";
 import { PlanningService } from "./planning.service";
 
 @CoreControllers({
@@ -43,5 +44,14 @@ export class PlanningController {
     @Body() dto: PlanningExplainDto,
   ) {
     return await this.planningService.getPropertyPlanningExplain(propertyId, dto);
+  }
+
+  @Post("properties/:propertyId/ingest-documents")
+  @HttpCode(HttpStatus.OK)
+  async ingestPropertyPlanningDocuments(
+    @Param("propertyId", ParseIntPipe) propertyId: number,
+    @Body() dto: PlanningIngestDto,
+  ) {
+    return await this.planningService.ingestPropertyPlanningDocuments(propertyId, dto);
   }
 }

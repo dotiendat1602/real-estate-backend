@@ -11,6 +11,7 @@ import { StorageService, UploadedFile } from "libs/modules/storage/storage.servi
 import { ApiException } from "libs/utils/exception";
 import { CoordinateLookupDto } from "./dto/coordinate-lookup.dto";
 import { PlanningExplainDto } from "./dto/planning-explain.dto";
+import { PlanningIngestDto } from "./dto/planning-ingest.dto";
 import { PlanningAiClientService } from "./services/planning-ai-client.service";
 import { QhkhsddHanoiAdapter } from "./services/qhkhsdd-hanoi.adapter";
 import { computeBbox, wktToGeoJson } from "./utils/wkt-to-geojson";
@@ -701,6 +702,20 @@ export class PlanningService {
     const dossierCode = summary?.dossier?.code || null;
     const dossier = dossierCode ? await this.getPlanningDossier(dossierCode).catch(() => null) : null;
 
+    const autoIngestDocuments = this.buildPlanningIngestDocuments({
+      propertyId,
+      summary,
+      dossier,
+    });
+
+    if (autoIngestDocuments.length) {
+      // Best-effort: auto sync planning docs for AI retrieval, but do not block explain when ingest has transient errors.
+      await this.planningAiClientService.ingestDocuments({
+        replaceExisting: false,
+        documents: autoIngestDocuments,
+      }).catch(() => null);
+    }
+
     return await this.planningAiClientService.explain({
       propertyId,
       question: dto?.question?.trim() || undefined,
@@ -714,12 +729,118 @@ export class PlanningService {
         checkedAt: summary.checkedAt ? new Date(summary.checkedAt).toISOString() : null,
       },
       documents: (dossier?.documents || []).map((doc) => ({
+        planningDocumentId: (doc as any)?.id,
         title: this.sanitizeText(doc.title) || "Tai lieu quy hoach",
         format: this.sanitizeText(doc.format),
         docType: this.sanitizeText((doc as any)?.docType || null),
         sourcePath: this.sanitizeText((doc as any)?.sourcePath || null),
+        sourceUrl: this.sanitizeText((doc as any)?.sourceUrl || null),
         rawMeta: this.sanitizeJson((doc as any)?.rawMeta || null),
       })),
     });
+  }
+
+  private extractPlanYear(value?: string | null): number | null {
+    if (!value) {
+      return null;
+    }
+
+    const match = value.match(/(20\d{2})/);
+    if (!match) {
+      return null;
+    }
+
+    const year = Number(match[1]);
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return null;
+    }
+
+    return year;
+  }
+
+  private inferDistrictFromDossierName(value?: string | null): string | null {
+    const cleaned = this.sanitizeText(value);
+    if (!cleaned) {
+      return null;
+    }
+
+    const districtMatch = cleaned.match(/qu[ạa]n\s+([^,\-]+)/i);
+    if (districtMatch?.[1]) {
+      return districtMatch[1].trim();
+    }
+
+    const districtBySlash = cleaned.split("-").pop()?.trim();
+    return districtBySlash || null;
+  }
+
+  private buildPlanningIngestDocuments(params: {
+    propertyId: number;
+    summary: any;
+    dossier: any;
+  }) {
+    const { propertyId, summary, dossier } = params;
+    const dossierCode = summary?.dossier?.code || null;
+    const planYear = this.extractPlanYear(summary?.dossier?.name || null);
+    const district = this.inferDistrictFromDossierName(summary?.dossier?.name || null);
+
+    return (dossier?.documents || [])
+      .filter((doc: any) => Boolean(doc?.id && doc?.sourceUrl))
+      .map((doc: any) => ({
+        planningDocumentId: Number(doc.id),
+        title: this.sanitizeText(doc.title) || "Tai lieu quy hoach",
+        sourceUrl: this.sanitizeText(doc.sourceUrl) || "",
+        format: this.sanitizeText(doc.format),
+        documentType: this.sanitizeText(doc.docType),
+        dossierCode,
+        city: "Ha Noi",
+        district,
+        planYear,
+        propertyId,
+        rawMeta: this.sanitizeJson({
+          ...(doc.rawMeta || {}),
+          district,
+          planYear,
+          dossierCode,
+          sourcePath: doc.sourcePath,
+        }),
+      }))
+      .filter((item: any) => Boolean(item.sourceUrl));
+  }
+
+  async ingestPropertyPlanningDocuments(propertyId: number, dto: PlanningIngestDto) {
+    const summary = await this.getPropertyPlanningSummary(propertyId);
+    const dossierCode = summary?.dossier?.code || null;
+    const dossier = dossierCode ? await this.getPlanningDossier(dossierCode).catch(() => null) : null;
+
+    const replaceExisting = dto?.replaceExisting !== false;
+    const ingestDocuments = this.buildPlanningIngestDocuments({
+      propertyId,
+      summary,
+      dossier,
+    });
+
+    if (!ingestDocuments.length) {
+      return {
+        ok: false,
+        message: "Khong co tai lieu co sourceUrl de ingest",
+        propertyId,
+        dossierCode,
+        ingestedChunks: 0,
+        items: [],
+      };
+    }
+
+    const ingestResult = await this.planningAiClientService.ingestDocuments({
+      replaceExisting,
+      documents: ingestDocuments,
+    });
+
+    return {
+      ...ingestResult,
+      propertyId,
+      dossierCode,
+      replaceExisting,
+      totalDocuments: ingestDocuments.length,
+    };
   }
 }
