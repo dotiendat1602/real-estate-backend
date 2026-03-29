@@ -30,6 +30,29 @@ export interface PlanningAiExplainResponse {
   answer: string;
   disclaimer: string;
   highlights: string[];
+  citations?: Array<{
+    postId?: number | null;
+    propertyId?: number | null;
+    planningDocumentId?: number | null;
+    title?: string | null;
+    sourceUrl?: string | null;
+    format?: string | null;
+    documentScope?: string | null;
+    documentType?: string | null;
+    dossierCode?: string | null;
+    planYear?: number | null;
+    chunkType?: string | null;
+    chunkIndex?: number | null;
+    globalChunkIndex?: number | null;
+    pageNumber?: number | null;
+    lineStart?: number | null;
+    lineEnd?: number | null;
+    sourceLocator?: string | null;
+    chunker?: string | null;
+    city?: string | null;
+    district?: string | null;
+    snippet?: string | null;
+  }>;
 }
 
 export interface PlanningAiIngestDocumentRequest {
@@ -69,11 +92,15 @@ export class PlanningAiClientService {
   private readonly client: AxiosInstance;
   private readonly timeout: number;
   private readonly retries: number;
+  private readonly ingestTimeout: number;
+  private readonly ingestRetries: number;
 
   constructor(private readonly coreConfigService: CoreConfigService) {
     const baseURL = this.coreConfigService.aiService.url;
     this.timeout = this.coreConfigService.aiService.timeout;
     this.retries = Math.max(0, this.coreConfigService.aiService.retries || 0);
+    this.ingestTimeout = Math.max(this.timeout, this.coreConfigService.aiService.ingestTimeout || 300000);
+    this.ingestRetries = Math.max(0, this.coreConfigService.aiService.ingestRetries || 0);
 
     this.client = axios.create({
       baseURL,
@@ -106,9 +133,13 @@ export class PlanningAiClientService {
   async ingestDocuments(request: PlanningAiIngestRequest): Promise<PlanningAiIngestResponse> {
     let lastError: any = null;
 
-    for (let attempt = 0; attempt <= this.retries; attempt += 1) {
+    for (let attempt = 0; attempt <= this.ingestRetries; attempt += 1) {
       try {
-        const response = await this.client.post<PlanningAiIngestResponse>("/api/planning/ingest-documents", request);
+        const response = await this.client.post<PlanningAiIngestResponse>(
+          "/api/planning/ingest-documents",
+          request,
+          { timeout: this.ingestTimeout },
+        );
         return response.data;
       } catch (error: any) {
         lastError = error;
