@@ -13,6 +13,7 @@ import { CoordinateLookupDto } from "./dto/coordinate-lookup.dto";
 import { PlanningExplainDto } from "./dto/planning-explain.dto";
 import { PlanningIngestDto } from "./dto/planning-ingest.dto";
 import { PlanningAiClientService } from "./services/planning-ai-client.service";
+import { PlanningIngestJobData, PlanningIngestQueueService } from "./services/planning-ingest-queue.service";
 import { QhkhsddHanoiAdapter } from "./services/qhkhsdd-hanoi.adapter";
 import { computeBbox, wktToGeoJson } from "./utils/wkt-to-geojson";
 
@@ -25,6 +26,7 @@ export class PlanningService {
     private readonly qhkhsddHanoiAdapter: QhkhsddHanoiAdapter,
     private readonly storageService: StorageService,
     private readonly planningAiClientService: PlanningAiClientService,
+    private readonly planningIngestQueueService: PlanningIngestQueueService,
   ) { }
 
   private roundCoordinate(value: number) {
@@ -709,10 +711,17 @@ export class PlanningService {
     });
 
     if (autoIngestDocuments.length) {
-      // Best-effort: auto sync planning docs for AI retrieval, but do not block explain when ingest has transient errors.
-      await this.planningAiClientService.ingestDocuments({
+      // Best-effort: enqueue auto-ingest in background so explain API never blocks on OCR.
+      await this.planningIngestQueueService.enqueue({
+        propertyId,
+        dossierCode,
         replaceExisting: false,
-        documents: autoIngestDocuments,
+        totalDocuments: autoIngestDocuments.length,
+        ingestRequest: {
+          replaceExisting: false,
+          documents: autoIngestDocuments,
+        },
+        trigger: "auto_explain",
       }).catch(() => null);
     }
 
@@ -807,7 +816,7 @@ export class PlanningService {
       .filter((item: any) => Boolean(item.sourceUrl));
   }
 
-  async ingestPropertyPlanningDocuments(propertyId: number, dto: PlanningIngestDto) {
+  private async buildPlanningIngestJobData(propertyId: number, dto: PlanningIngestDto): Promise<PlanningIngestJobData> {
     const summary = await this.getPropertyPlanningSummary(propertyId);
     const dossierCode = summary?.dossier?.code || null;
     const dossier = dossierCode ? await this.getPlanningDossier(dossierCode).catch(() => null) : null;
@@ -820,27 +829,55 @@ export class PlanningService {
     });
 
     if (!ingestDocuments.length) {
-      return {
-        ok: false,
-        message: "Khong co tai lieu co sourceUrl de ingest",
-        propertyId,
-        dossierCode,
-        ingestedChunks: 0,
-        items: [],
-      };
+      throw new ApiException("Khong co tai lieu co sourceUrl de ingest", HttpStatus.BAD_REQUEST);
     }
 
-    const ingestResult = await this.planningAiClientService.ingestDocuments({
-      replaceExisting,
-      documents: ingestDocuments,
-    });
-
     return {
-      ...ingestResult,
       propertyId,
       dossierCode,
       replaceExisting,
       totalDocuments: ingestDocuments.length,
+      ingestRequest: {
+        replaceExisting,
+        documents: ingestDocuments,
+      },
+      trigger: "manual",
     };
+  }
+
+  async executeQueuedPlanningIngest(jobData: PlanningIngestJobData) {
+    const ingestResult = await this.planningAiClientService.ingestDocuments(jobData.ingestRequest);
+
+    return {
+      ...ingestResult,
+      propertyId: jobData.propertyId,
+      dossierCode: jobData.dossierCode,
+      replaceExisting: jobData.replaceExisting,
+      totalDocuments: jobData.totalDocuments,
+    };
+  }
+
+  async ingestPropertyPlanningDocuments(propertyId: number, dto: PlanningIngestDto) {
+    const jobData = await this.buildPlanningIngestJobData(propertyId, dto);
+    const queued = await this.planningIngestQueueService.enqueue(jobData);
+
+    return {
+      ok: true,
+      queued: true,
+      alreadyQueued: queued.alreadyQueued,
+      status: queued.status,
+      jobId: queued.jobId,
+      propertyId: jobData.propertyId,
+      dossierCode: jobData.dossierCode,
+      replaceExisting: jobData.replaceExisting,
+      totalDocuments: jobData.totalDocuments,
+      message: queued.alreadyQueued
+        ? "Ingest job da ton tai va dang duoc xu ly"
+        : "Da tao ingest job, vui long theo doi trang thai qua endpoint status",
+    };
+  }
+
+  async getPlanningIngestJobStatus(propertyId: number, jobId: string) {
+    return await this.planningIngestQueueService.getStatus(propertyId, jobId);
   }
 }

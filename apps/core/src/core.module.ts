@@ -60,7 +60,7 @@ const applications = [
     ClsModule,
     // CacheModule,
     // RedlockModule,
-    // QueueModule,
+    QueueModule,
     SocketModule,
     PrismaModule.forRootAsync({
       isGlobal: true,

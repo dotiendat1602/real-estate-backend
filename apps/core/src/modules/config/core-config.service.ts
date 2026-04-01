@@ -19,7 +19,9 @@ export class CoreConfigService extends ConfigService {
     url: this.get('AI_SERVICE_URL') || 'http://localhost:8001',
     timeout: +this.get('AI_SERVICE_TIMEOUT') || 30000,
     retries: +this.get('AI_SERVICE_RETRIES') || 2,
-    ingestTimeout: +this.get('AI_SERVICE_INGEST_TIMEOUT') || 300000,
+    ingestTimeout: this.get('AI_SERVICE_INGEST_TIMEOUT') !== undefined
+      ? Number(this.get('AI_SERVICE_INGEST_TIMEOUT'))
+      : 0,
     ingestRetries: +this.get('AI_SERVICE_INGEST_RETRIES') || 0,
   }
 }

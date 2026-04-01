@@ -47,11 +47,20 @@ export class PlanningController {
   }
 
   @Post("properties/:propertyId/ingest-documents")
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   async ingestPropertyPlanningDocuments(
     @Param("propertyId", ParseIntPipe) propertyId: number,
     @Body() dto: PlanningIngestDto,
   ) {
     return await this.planningService.ingestPropertyPlanningDocuments(propertyId, dto);
+  }
+
+  @Get("properties/:propertyId/ingest-documents/jobs/:jobId")
+  @HttpCode(HttpStatus.OK)
+  async getIngestPropertyPlanningDocumentsJobStatus(
+    @Param("propertyId", ParseIntPipe) propertyId: number,
+    @Param("jobId") jobId: string,
+  ) {
+    return await this.planningService.getPlanningIngestJobStatus(propertyId, jobId);
   }
 }

@@ -77,6 +77,7 @@ export interface PlanningAiIngestRequest {
 export interface PlanningAiIngestResponse {
   ok: boolean;
   ingestedChunks: number;
+  failedDocuments?: number;
   items: Array<{
     planningDocumentId: number;
     title: string;
@@ -84,6 +85,9 @@ export interface PlanningAiIngestResponse {
     ingestedChunks: number;
     textChunks: number;
     tableChunks: number;
+    skipped?: boolean;
+    reason?: string | null;
+    error?: string | null;
   }>;
 }
 
@@ -99,7 +103,11 @@ export class PlanningAiClientService {
     const baseURL = this.coreConfigService.aiService.url;
     this.timeout = this.coreConfigService.aiService.timeout;
     this.retries = Math.max(0, this.coreConfigService.aiService.retries || 0);
-    this.ingestTimeout = Math.max(this.timeout, this.coreConfigService.aiService.ingestTimeout || 300000);
+    const configuredIngestTimeout = Number(this.coreConfigService.aiService.ingestTimeout || 0);
+    // 0 means no client-side timeout; use for long-running async ingest jobs.
+    this.ingestTimeout = Number.isFinite(configuredIngestTimeout) && configuredIngestTimeout >= 0
+      ? configuredIngestTimeout
+      : 0;
     this.ingestRetries = Math.max(0, this.coreConfigService.aiService.ingestRetries || 0);
 
     this.client = axios.create({
@@ -147,6 +155,23 @@ export class PlanningAiClientService {
     }
 
     if (lastError) {
+      const statusCode = Number(lastError?.response?.status) || null;
+      const errorCode = lastError?.code || null;
+
+      if (errorCode === "ECONNABORTED") {
+        throw new ApiException(
+          `AI service ingest timeout sau ${this.ingestTimeout}ms`,
+          HttpStatus.GATEWAY_TIMEOUT,
+        );
+      }
+
+      if (statusCode !== null && statusCode >= 500) {
+        throw new ApiException(
+          "AI service loi noi bo khi ingest tai lieu quy hoach",
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+
       throw new ApiException(
         "Khong the ket noi AI service de ingest tai lieu quy hoach",
         HttpStatus.SERVICE_UNAVAILABLE,

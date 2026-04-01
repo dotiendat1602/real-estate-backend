@@ -139,6 +139,7 @@ export class CrawlBatdongsanService {
   private webshareProxyIndex = 0;
   private webshareProxyLastFetch = 0;
   private readonly webshareProxyCacheTtlMs = 5 * 60 * 1000;
+  private runtimeProxyDisabled = false;
 
   private readonly userAgents = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
@@ -245,7 +246,7 @@ export class CrawlBatdongsanService {
 
           seedProxyRotated = true;
           recoveryAttempt += 1;
-          this.logger.warn(
+          this.logger.error(
             `[AntiBot][${seed.city}/${seed.mode}] challengeRatio=${(r.metrics.challengeRatio * 100).toFixed(1)}% challengeHits=${r.metrics.challengeHits}. Rotate proxy and retry seed (${recoveryAttempt}/${maxSeedRecoveries})`,
           );
 
@@ -403,7 +404,7 @@ export class CrawlBatdongsanService {
     if (state.cooldownUntil <= now) return false;
 
     const remainSec = Math.ceil((state.cooldownUntil - now) / 1000);
-    this.logger.warn(
+    this.logger.error(
       `[Circuit][${seed.city}/${seed.mode}] skip seed due to cooldown ${remainSec}s (opened=${state.openedCount}, trips=${state.consecutiveTrips}, reason=${state.lastReason || "n/a"})`,
     );
     return true;
@@ -427,7 +428,7 @@ export class CrawlBatdongsanService {
     state.lastReason = `${reason}; ratio=${(metrics.challengeRatio * 100).toFixed(1)}%; hits=${metrics.challengeHits}`;
 
     if (state.consecutiveTrips < threshold) {
-      this.logger.warn(
+      this.logger.error(
         `[Circuit][${seed.city}/${seed.mode}] trip ${state.consecutiveTrips}/${threshold} (not opened yet): ${state.lastReason}`,
       );
       return { opened: false };
@@ -484,7 +485,7 @@ export class CrawlBatdongsanService {
   private trackChallenge(reason: string, url?: string): void {
     this.challengeDetectedCount += 1;
     this.consecutiveChallengeCount += 1;
-    this.logger.warn(
+    this.logger.error(
       `[AntiBot] challenge detected reason=${reason} consecutive=${this.consecutiveChallengeCount} total=${this.challengeDetectedCount}${url ? ` url=${url}` : ""
       }`,
     );
@@ -507,13 +508,33 @@ export class CrawlBatdongsanService {
   }
 
   private async createBrowserContext(): Promise<BrowserContext> {
-    const proxy = await this.getNextWebshareProxy();
+    const proxy = this.isProxyEnabled() ? await this.getNextWebshareProxy() : undefined;
+    const context = await this.launchBrowserContext(proxy);
+
+    if (!proxy || !this.getProxyHealthCheckEnabled()) {
+      return context;
+    }
+
+    const healthy = await this.verifyContextConnectivity(context, this.getNavigationProbeTimeoutMs());
+    if (healthy) {
+      return context;
+    }
+
+    this.logger.error(
+      "[Proxy] Proxy context failed connectivity probe. Disable proxy for current process and fallback to direct connection.",
+    );
+    this.runtimeProxyDisabled = true;
+    await context.close().catch(() => null);
+    return this.launchBrowserContext(undefined);
+  }
+
+  private async launchBrowserContext(proxy?: LaunchProxyConfig): Promise<BrowserContext> {
     const selectedUserAgent = this.pickRandom(this.userAgents);
     const profileDir = this.getProfileDirForProxy(proxy);
     await fsp.mkdir(profileDir, { recursive: true });
 
     this.logger.log(
-      `Crawler browser profile: headless=${this.getHeadlessFlag()} proxy=${proxy?.server ? "enabled" : "disabled"}`,
+      `Crawler browser profile: headless=${this.getHeadlessFlag()} proxy=${proxy?.server ? `enabled(${proxy.server})` : "disabled"}`,
     );
 
     return chromium.launchPersistentContext(profileDir, {
@@ -528,12 +549,50 @@ export class CrawlBatdongsanService {
     });
   }
 
+  private getNavigationProbeTimeoutMs(): number {
+    const raw = Number(process.env.BATDONGSAN_NAV_PROBE_TIMEOUT_MS || "20000");
+    if (!Number.isFinite(raw) || raw < 3000) return 20000;
+    return Math.min(Math.floor(raw), 120000);
+  }
+
+  private getProxyHealthCheckEnabled(): boolean {
+    const raw = (process.env.BATDONGSAN_PROXY_HEALTHCHECK || "true").toLowerCase();
+    return ["1", "true", "yes", "on"].includes(raw);
+  }
+
+  private isNetworkNavigationError(error: any): boolean {
+    const msg = String(error?.message || error || "").toLowerCase();
+    return (
+      msg.includes("err_timed_out") ||
+      msg.includes("err_aborted") ||
+      msg.includes("err_proxy_connection_failed") ||
+      msg.includes("err_tunnel_connection_failed") ||
+      msg.includes("err_connection_refused") ||
+      msg.includes("err_name_not_resolved")
+    );
+  }
+
+  private async verifyContextConnectivity(context: BrowserContext, timeoutMs: number): Promise<boolean> {
+    const page = await context.newPage();
+    try {
+      this.navigationAttemptCount += 1;
+      await page.goto(this.baseUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+      return true;
+    } catch (error: any) {
+      const errMsg = error?.message || String(error);
+      this.logger.error(`[Probe] context connectivity failed err=${errMsg}`);
+      return !this.isNetworkNavigationError(error);
+    } finally {
+      await page.close().catch(() => null);
+    }
+  }
+
   private async rotateBrowserContext(current: BrowserContext | null, reason: string): Promise<BrowserContext> {
     if (current) {
       await current.close().catch(() => null);
     }
     this.proxyRotationCount += 1;
-    this.logger.warn(`[AntiBot] rotating browser context (${this.proxyRotationCount}) reason=${reason}`);
+    this.logger.error(`[AntiBot] rotating browser context (${this.proxyRotationCount}) reason=${reason}`);
     return this.createBrowserContext();
   }
 
@@ -556,16 +615,22 @@ export class CrawlBatdongsanService {
       "--disable-dev-shm-usage",
       "--disable-blink-features=AutomationControlled",
       "--disable-features=TranslateUI",
-      "--disable-background-networking",
-      "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding",
-      "--disable-backgrounding-occluded-windows",
       "--disable-ipc-flooding-protection",
       "--window-size=1366,768",
       "--no-first-run",
       "--no-default-browser-check",
       "--ignore-certificate-errors",
     ];
+
+    // Cloudflare challenge cần một số network/background behaviors mặc định của Chromium.
+    if (!this.getCloudflareFriendlyMode()) {
+      base.push(
+        "--disable-background-networking",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
+      );
+    }
 
     if (headlessFlag) {
       base.push("--headless=new");
@@ -574,7 +639,13 @@ export class CrawlBatdongsanService {
     return base;
   }
 
+  private getCloudflareFriendlyMode(): boolean {
+    const raw = (process.env.BATDONGSAN_CLOUDFLARE_FRIENDLY_MODE || "true").toLowerCase();
+    return ["1", "true", "yes", "on"].includes(raw);
+  }
+
   private isProxyEnabled(): boolean {
+    if (this.runtimeProxyDisabled) return false;
     const enabled = (process.env.BATDONGSAN_PROXY_ENABLED || process.env.WEBSHARE_PROXY_ENABLED || "false").toLowerCase();
     return ["1", "true", "yes", "on"].includes(enabled);
   }
@@ -582,7 +653,7 @@ export class CrawlBatdongsanService {
   private async fetchWebshareProxies(): Promise<WebshareProxy[]> {
     if (!this.isProxyEnabled()) return [];
     if (!this.webshareApiKey) {
-      this.logger.warn("Proxy is enabled but WEBSHARE_API_KEY is missing.");
+      this.logger.error("Proxy is enabled but WEBSHARE_API_KEY is missing.");
       return [];
     }
 
@@ -599,7 +670,7 @@ export class CrawlBatdongsanService {
       });
 
       if (!response.ok) {
-        this.logger.warn(`Unable to fetch Webshare proxies: ${response.status} ${response.statusText}`);
+        this.logger.error(`Unable to fetch Webshare proxies: ${response.status} ${response.statusText}`);
         return this.webshareProxies;
       }
 
@@ -617,7 +688,7 @@ export class CrawlBatdongsanService {
         this.webshareProxyIndex = Math.floor(Math.random() * valid.length);
         this.logger.log(`Fetched ${valid.length} valid Webshare proxies`);
       } else {
-        this.logger.warn("Webshare returned no valid proxies.");
+        this.logger.error("Webshare returned no valid proxies.");
       }
 
       return this.webshareProxies;
@@ -689,7 +760,7 @@ export class CrawlBatdongsanService {
       } catch (error: any) {
         const isLastAttempt = attempt >= retries;
         const errMsg = error?.message || String(error);
-        this.logger.warn(`goto attempt ${attempt + 1}/${retries + 1} failed url=${url} err=${errMsg}`);
+        this.logger.error(`goto attempt ${attempt + 1}/${retries + 1} failed url=${url} err=${errMsg}`);
         if (isLastAttempt) throw error;
 
         const backoff = 1000 * (attempt + 1) + Math.floor(Math.random() * 1500);
@@ -756,10 +827,26 @@ export class CrawlBatdongsanService {
   }
 
   private buildSeeds(cities: CityKey[], modes: ModeKey[]): CrawlSeed[] {
-    const SALE_CATS = ["ban-can-ho-chung-cu"];
-    const RENT_CATS = ["cho-thue-can-ho-chung-cu"];
+    const SALE_CATS = [
+      // 'ban-can-ho-chung-cu',
+      'ban-nha-rieng',
+      'ban-dat',
+      'ban-dat-nen-du-an',
+      'ban-biet-thu-lien-ke',
+    ];
 
-    const citySlug: Record<CityKey, string> = { HN: "ha-noi", HCM: "tp-hcm" };
+    const RENT_CATS = [
+      // 'cho-thue-can-ho-chung-cu',
+      'cho-thue-nha-rieng',
+      'cho-thue-nha-tro-phong-tro',
+      'cho-thue-van-phong',
+      'cho-thue-cua-hang-ki-ot',
+    ];
+
+    const citySlug: Record<CityKey, string> = {
+      HN: 'ha-noi',
+      HCM: 'tp-hcm',
+    };
 
     const out: CrawlSeed[] = [];
     for (const city of cities) {
@@ -892,7 +979,11 @@ export class CrawlBatdongsanService {
     try {
       await this.gotoWithRetry(page, listUrl, { retries: 3, waitUntil: "domcontentloaded" });
 
-      await this.waitForManualCloudflareSolve(page, "list", listUrl);
+      const solved = await this.waitForManualCloudflareSolve(page, "list", listUrl);
+      if (!solved) {
+        this.logger.warn(`Cloudflare not solved for list url=${listUrl}. Skip this page.`);
+        return [];
+      }
 
       await page.waitForTimeout(2200);
 
@@ -1022,7 +1113,11 @@ export class CrawlBatdongsanService {
     try {
       await this.gotoWithRetry(page, url, { retries: 3, waitUntil: "domcontentloaded" });
 
-      await this.waitForManualCloudflareSolve(page, "detail", url);
+      const solved = await this.waitForManualCloudflareSolve(page, "detail", url);
+      if (!solved) {
+        this.logger.warn(`Cloudflare not solved for detail url=${url}.`);
+        return null;
+      }
 
       // Nếu vẫn challenge => fail
       if (await this.isCloudflareChallenge(page)) {
@@ -1510,7 +1605,7 @@ export class CrawlBatdongsanService {
     expected: "list" | "detail",
     urlForLog: string,
     timeoutMs = 15 * 60 * 1000,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const start = Date.now();
 
     // Nếu chưa challenge thì vẫn phải chắc chắn trang thật đã có content mong đợi
@@ -1522,7 +1617,7 @@ export class CrawlBatdongsanService {
 
     if (await isExpectedReady()) {
       this.trackSuccessSignal();
-      return;
+      return true;
     }
 
     this.trackChallenge("challenge-or-not-ready", urlForLog);
@@ -1547,13 +1642,14 @@ export class CrawlBatdongsanService {
         // check lần nữa cho chắc
         if (await isExpectedReady()) {
           this.trackSuccessSignal();
-          return;
+          return true;
         }
       }
     }
 
     this.trackChallenge("manual-solve-timeout", urlForLog);
-    throw new Error(`Manual Cloudflare solve timeout after ${timeoutMs}ms url=${urlForLog}`);
+    this.logger.warn(`Manual Cloudflare solve timeout after ${timeoutMs}ms url=${urlForLog}`);
+    return false;
   }
 
   private async hasRealListContent(page: Page): Promise<boolean> {
