@@ -167,13 +167,13 @@ export class PlanningAiClientService {
 
       if (statusCode !== null && statusCode >= 500) {
         throw new ApiException(
-          "AI service loi noi bo khi ingest tai lieu quy hoach",
+          "AI service loi noi bo khi ingest tai lieu quy hoach: " + (lastError?.response?.data || lastError.message || "Unknown error"),
           HttpStatus.SERVICE_UNAVAILABLE,
         );
       }
 
       throw new ApiException(
-        "Khong the ket noi AI service de ingest tai lieu quy hoach",
+        "Khong the ket noi AI service de ingest tai lieu quy hoach: " + (lastError?.response?.data || lastError.message || "Unknown error"),
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }

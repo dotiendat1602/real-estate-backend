@@ -1,9 +1,6 @@
 services:
   core:
-    build:
-      context: .
-      dockerfile: apps/core/Dockerfile
-    image: real-estate-core:local
+    image: ${CORE_IMAGE:?CORE_IMAGE is required}
     container_name: real_estate_core
     env_file:
       - ./.env
@@ -32,10 +29,7 @@ services:
       - real-estate
 
   scheduler:
-    build:
-      context: .
-      dockerfile: apps/scheduler/Dockerfile
-    image: real-estate-scheduler:local
+    image: ${SCHEDULER_IMAGE:?SCHEDULER_IMAGE is required}
     container_name: real_estate_scheduler
     env_file:
       - ./.env

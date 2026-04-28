@@ -1,5 +1,14 @@
 # dependencies
 node_modules
+**/node_modules
+
+# env files
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 
 # git, vs config
 .vscode
@@ -7,8 +16,6 @@ node_modules
 
 # compiled output
 dist
-
-**/node_modules
 package-lock.json
 **/package-lock.json
 

@@ -10,6 +10,7 @@ import { PrismaService } from "libs/modules/prisma/prisma.service";
 import { StorageService, UploadedFile } from "libs/modules/storage/storage.service";
 import { ApiException } from "libs/utils/exception";
 import { CoordinateLookupDto } from "./dto/coordinate-lookup.dto";
+import { PlanningBatchIngestDto } from "./dto/planning-batch-ingest.dto";
 import { PlanningExplainDto } from "./dto/planning-explain.dto";
 import { PlanningIngestDto } from "./dto/planning-ingest.dto";
 import { PlanningAiClientService } from "./services/planning-ai-client.service";
@@ -842,6 +843,149 @@ export class PlanningService {
         documents: ingestDocuments,
       },
       trigger: "manual",
+    };
+  }
+
+  private resolveBatchIngestConcurrency(requestedConcurrency?: number): number {
+    const envConcurrency = Number(process.env.PLANNING_BATCH_INGEST_CONCURRENCY || 0);
+    const fallback = Number.isInteger(envConcurrency) && envConcurrency > 0 ? envConcurrency : 5;
+
+    const requested =
+      typeof requestedConcurrency === "number" && Number.isInteger(requestedConcurrency) && requestedConcurrency > 0
+        ? requestedConcurrency
+        : fallback;
+
+    return Math.max(1, Math.min(20, requested));
+  }
+
+  private normalizeBatchPropertyIds(propertyIds: number[]): number[] {
+    const unique = new Set<number>();
+
+    for (const rawId of propertyIds || []) {
+      if (!Number.isInteger(rawId) || rawId <= 0) {
+        continue;
+      }
+
+      unique.add(rawId);
+    }
+
+    return Array.from(unique);
+  }
+
+  private extractBatchError(error: unknown): { message: string; statusCode: number } {
+    if (error instanceof ApiException) {
+      return {
+        message: String(error.message || "Ingest batch failed"),
+        statusCode: error.getStatus(),
+      };
+    }
+
+    if (error instanceof Error) {
+      return {
+        message: error.message || "Ingest batch failed",
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      };
+    }
+
+    return {
+      message: "Ingest batch failed",
+      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+    };
+  }
+
+  private async mapWithConcurrency<TInput, TResult>(
+    items: TInput[],
+    concurrency: number,
+    worker: (item: TInput, index: number) => Promise<TResult>,
+  ): Promise<TResult[]> {
+    if (!items.length) {
+      return [];
+    }
+
+    const safeConcurrency = Math.max(1, Math.min(concurrency, items.length));
+    const output = new Array<TResult>(items.length);
+    let cursor = 0;
+
+    const runner = async () => {
+      while (true) {
+        const currentIndex = cursor;
+        cursor += 1;
+
+        if (currentIndex >= items.length) {
+          return;
+        }
+
+        output[currentIndex] = await worker(items[currentIndex], currentIndex);
+      }
+    };
+
+    await Promise.all(Array.from({ length: safeConcurrency }, () => runner()));
+    return output;
+  }
+
+  async ingestPlanningDocumentsByPropertyIds(dto: PlanningBatchIngestDto) {
+    const propertyIds = this.normalizeBatchPropertyIds(dto?.propertyIds || []);
+    if (!propertyIds.length) {
+      throw new ApiException("Danh sach propertyId khong hop le", HttpStatus.BAD_REQUEST);
+    }
+
+    const replaceExisting = dto?.replaceExisting !== false;
+    const concurrency = this.resolveBatchIngestConcurrency(dto?.concurrency);
+    const startedAt = Date.now();
+
+    const items = await this.mapWithConcurrency(propertyIds, concurrency, async (propertyId) => {
+      try {
+        const jobData = await this.buildPlanningIngestJobData(propertyId, { replaceExisting });
+        const queued = await this.planningIngestQueueService.enqueue(jobData);
+
+        return {
+          ok: true,
+          queued: true,
+          alreadyQueued: queued.alreadyQueued,
+          status: queued.status,
+          jobId: queued.jobId,
+          propertyId: jobData.propertyId,
+          dossierCode: jobData.dossierCode,
+          replaceExisting: jobData.replaceExisting,
+          totalDocuments: jobData.totalDocuments,
+          message: queued.alreadyQueued
+            ? "Ingest job da ton tai va dang duoc xu ly"
+            : "Da tao ingest job, vui long theo doi trang thai qua endpoint status",
+        };
+      } catch (error) {
+        const parsedError = this.extractBatchError(error);
+
+        return {
+          ok: false,
+          queued: false,
+          alreadyQueued: false,
+          status: "failed",
+          jobId: null,
+          propertyId,
+          dossierCode: null,
+          replaceExisting,
+          totalDocuments: 0,
+          message: parsedError.message,
+          errorStatusCode: parsedError.statusCode,
+        };
+      }
+    });
+
+    const failedProperties = items.filter((item) => !item.ok).length;
+    const queuedJobs = items.filter((item) => item.ok && !item.alreadyQueued).length;
+    const alreadyQueued = items.filter((item) => item.ok && item.alreadyQueued).length;
+
+    return {
+      ok: failedProperties === 0,
+      queued: true,
+      totalProperties: propertyIds.length,
+      queuedJobs,
+      alreadyQueued,
+      failedProperties,
+      replaceExisting,
+      concurrency,
+      elapsedMs: Date.now() - startedAt,
+      items,
     };
   }
 

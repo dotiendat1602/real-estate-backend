@@ -1,6 +1,7 @@
 import { Body, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post } from "@nestjs/common";
 import { CoreControllers } from "libs/utils/decorators/controller-customer.decorator";
 import { CoordinateLookupDto } from "./dto/coordinate-lookup.dto";
+import { PlanningBatchIngestDto } from "./dto/planning-batch-ingest.dto";
 import { PlanningExplainDto } from "./dto/planning-explain.dto";
 import { PlanningIngestDto } from "./dto/planning-ingest.dto";
 import { PlanningService } from "./planning.service";
@@ -53,6 +54,12 @@ export class PlanningController {
     @Body() dto: PlanningIngestDto,
   ) {
     return await this.planningService.ingestPropertyPlanningDocuments(propertyId, dto);
+  }
+
+  @Post("properties/ingest-documents/batch")
+  @HttpCode(HttpStatus.ACCEPTED)
+  async ingestPlanningDocumentsByPropertyIds(@Body() dto: PlanningBatchIngestDto) {
+    return await this.planningService.ingestPlanningDocumentsByPropertyIds(dto);
   }
 
   @Get("properties/:propertyId/ingest-documents/jobs/:jobId")
