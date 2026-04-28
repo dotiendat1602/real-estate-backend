@@ -56,7 +56,7 @@ jobs:
           echo "SCHEDULER_IMAGE=${REGISTRY}/${repo}/scheduler" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master')
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -71,7 +71,7 @@ jobs:
         with:
           context: .
           file: apps/core/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master') }}
           tags: |
             ${{ env.CORE_IMAGE }}:${{ github.sha }}
             ${{ env.CORE_IMAGE }}:latest
@@ -83,7 +83,7 @@ jobs:
         with:
           context: .
           file: apps/scheduler/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master') }}
           tags: |
             ${{ env.SCHEDULER_IMAGE }}:${{ github.sha }}
             ${{ env.SCHEDULER_IMAGE }}:latest

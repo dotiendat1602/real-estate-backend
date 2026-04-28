@@ -15,6 +15,7 @@ FROM deps AS builder
 
 COPY nest-cli.json tsconfig.json tsconfig.build.json ./
 COPY prisma ./prisma
+COPY assets ./assets
 COPY apps ./apps
 COPY libs ./libs
 COPY types ./types
