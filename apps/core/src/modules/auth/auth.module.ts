@@ -8,6 +8,7 @@ import { AuthService } from './services/auth.service';
 import { TokenService } from './services/token.service';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { MailerModule } from 'libs/modules/mailer/mailer.module';
 
 @Global()
 @Module({
@@ -21,9 +22,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       }),
       inject: [CoreConfigService],
     }),
+    MailerModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, JwtRefreshStrategy, TokenService],
   exports: [AuthService, JwtStrategy, JwtRefreshStrategy, TokenService],
 })
-export class AuthModule {}
+export class AuthModule { }

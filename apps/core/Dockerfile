@@ -1,20 +1,44 @@
-FROM node:20-alpine 
-
-ADD . /app
+FROM node:20-bookworm-slim AS deps
 
 WORKDIR /app
 
-RUN ls /app -al
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-RUN npm i -g @nestjs/cli
+COPY package.json yarn.lock ./
+COPY apps/core/package.json apps/core/package.json
+COPY apps/scheduler/package.json apps/scheduler/package.json
 
-RUN npm i -g prisma
-RUN yarn --force
+RUN yarn install --frozen-lockfile
 
-COPY apps/core/package.json dist/apps/core/
-COPY apps/core/tsconfig.app.json dist/apps/core/
+FROM deps AS builder
 
-RUN prisma generate 
+COPY nest-cli.json tsconfig.json tsconfig.build.json ./
+COPY prisma ./prisma
+COPY assets ./assets
+COPY apps ./apps
+COPY libs ./libs
+COPY types ./types
+
+RUN yarn prisma:generate
 RUN yarn build:core
 
-CMD yarn start:core:prod
+FROM node:20-bookworm-slim AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3001
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+COPY package.json yarn.lock ./
+
+EXPOSE 3001
+
+CMD ["node", "dist/apps/core/src/main.js"]

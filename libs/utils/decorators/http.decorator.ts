@@ -14,20 +14,21 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
-import { Roles } from './role.decorator';
 import { AuthUserInterceptor } from '../interceptors';
-import { RoleType } from '../enum';
-import { AuthGuard, RolesGuard } from '../guards';
+import { AuthGuard } from '../guards';
+import { SystemPermissionType } from '@prisma/client';
+import { PermissionsGuard } from '../guards/permission.guard';
+import { Permissions } from './permission.decorator';
 
 export function Auth(
-  roles: RoleType[] = [],
+  permissions: SystemPermissionType[] = [],
   options?: Partial<{ public: boolean }>,
 ): MethodDecorator {
   const isPublicRoute = options?.public;
 
   return applyDecorators(
-    Roles(roles),
-    UseGuards(AuthGuard({ public: isPublicRoute }), RolesGuard),
+    Permissions(permissions),
+    UseGuards(AuthGuard({ public: isPublicRoute }), PermissionsGuard),
     ApiBearerAuth(),
     UseInterceptors(AuthUserInterceptor),
     ApiUnauthorizedResponse({ description: 'Unauthorized' }),

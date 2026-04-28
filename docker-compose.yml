@@ -1,106 +1,130 @@
-# version: '3.8'
-# services:
-#   core:
-#     container_name: weather-core
-#     build:
-#       context: .
-#       dockerfile: ./apps/core/Dockerfile
-#     env_file:
-#       - ./apps/core/.env
-#     ports:
-#       - '3000:3000'
-#     volumes:
-#       - .:/usr/src/app
-#       - /usr/src/app/node_modules
-#     command: 'yarn start:core:prod'
-#     restart: unless-stopped
-#   scheduler:
-#     container_name: weather-scheduler
-#     build:
-#       context: .
-#       dockerfile: ./apps/scheduler/Dockerfile
-#     env_file:
-#       - ./apps/scheduler/.env
-#     ports:
-#       - '3001:3001'
-#     volumes:
-#       - .:/usr/src/app
-#       - /usr/src/app/node_modules
-#     command: 'yarn start:scheduler:prod'
-#     restart: unless-stopped
-#   bot:
-#     container_name: weather-bot
-#     build:
-#       context: .
-#       dockerfile: ./apps/bot/Dockerfile
-#     env_file:
-#       - ./apps/bot/.env
-#     ports:
-#       - '3002:3002'
-#     volumes:
-#       - .:/usr/src/app
-#       - /usr/src/app/node_modules
-#     command: 'yarn start:bot:prod'
-#     restart: unless-stopped
-#   db:
-#     image: postgres
-#     environment:
-#       - POSTGRES_USER=postgres
-#       - POSTGRES_PASSWORD=postgress
-#       - POSTGRES_DB=weather-miners-core
-#     ports:
-#       - '5434:5432'
-#     volumes:
-#       - pgdata:/var/lib/postgresql/data
-# volumes:
-#   pgdata:
-
-version: "3.8"
-
 services:
-  be_app:
-    image: be-app:latest
-    container_name: be_app
+  core:
+    build:
+      context: .
+      dockerfile: apps/core/Dockerfile
+    image: real-estate-core:local
+    container_name: real_estate_core
     env_file:
-      - .env
+      - ./.env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${CORE_PORT:-3001}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
-      - "3001:3001"
-    networks:
-      - be-app-network
+      - "${CORE_PUBLISHED_PORT:-3001}:${CORE_PORT:-3001}"
+    mem_limit: ${CORE_MEMORY_LIMIT:-512m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - real-estate
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: apps/scheduler/Dockerfile
+    image: real-estate-scheduler:local
+    container_name: real_estate_scheduler
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${SCHEDULER_PORT:-3002}
+      ENABLE_DOCS: ${SCHEDULER_ENABLE_DOCS:-no}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL is required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      BATDONGSAN_HEADLESS: ${BATDONGSAN_HEADLESS:-true}
+      BATDONGSAN_CONCURRENCY: ${BATDONGSAN_CONCURRENCY:-1}
+    ports:
+      - "${SCHEDULER_PUBLISHED_PORT:-3002}:${SCHEDULER_PORT:-3002}"
+    mem_limit: ${SCHEDULER_MEMORY_LIMIT:-768m}
+    shm_size: ${SCHEDULER_SHM_SIZE:-512mb}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - real-estate
 
   postgres:
-    image: postgres:latest
-    container_name: app_postgres
+    image: pgvector/pgvector:pg16
+    container_name: real_estate_postgres
     environment:
-      POSTGRES_DB: app
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: ${POSTGRES_DB:-realestate}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PUBLISHED_PORT:-5432}:5432"
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-512m}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
-      - be-app-network
+      - real-estate
 
   redis:
-    image: redis:latest
-    container_name: app_redis
+    image: redis:7-alpine
+    container_name: real_estate_redis
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
     environment:
-      - REDIS_PASSWORD=myredispassword
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
-      - "6379:6379"
-    command: ["redis-server", "--requirepass", "myredispassword"]
+      - "${REDIS_BIND_IP:-127.0.0.1}:${REDIS_PUBLISHED_PORT:-6379}:6379"
+    mem_limit: ${REDIS_MEMORY_LIMIT:-128m}
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
-      - be-app-network
+      - real-estate
+
 volumes:
   postgres_data:
   redis_data:
 
 networks:
-  be-app-network:
-    external: true
+  real-estate:
+    name: ${DOCKER_NETWORK_NAME:-real_estate_network}
+    driver: bridge

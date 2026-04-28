@@ -56,4 +56,49 @@ export enum StatusLog {
 
 export enum Services {
   API_CORE = 'core',
+  SCHEDULER = 'api-scheduler',
+}
+
+export enum ItemMessage {
+  NOT_FOUND = 'This item not found',
+  FAIL_CREATE = 'Error while creating item',
+  FAIL_UPDATE = 'Error while updating item',
+  FAIL_DELETE = 'Error while deleting item',
+}
+
+export interface ConversationSocket {
+  conversation_id: number;
+  post_id?: number | null;
+  buyerId?: number | null;
+  agentId?: number | null;
+  createdAt: string; // ISO string
+}
+
+export interface MessageSocket {
+  message_id: number | null;
+  conversation_id: number;
+  senderId: number;
+  content: string | null;
+  createdAt: string; // ISO string
+}
+
+// Payload từ client
+export interface JoinConversationPayload {
+  conversationId: number;
+}
+
+export interface LeaveConversationPayload {
+  conversationId: number;
+}
+
+export interface SendMessagePayload {
+  conversationId: number;
+  senderId: number;
+  content: string;
+  tempId?: string;        // id tạm ở FE để mapping khi gửi xong
+}
+
+export interface TypingPayload {
+  conversationId: number;
+  userId: number;
 }

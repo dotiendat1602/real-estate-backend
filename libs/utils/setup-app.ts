@@ -18,11 +18,9 @@ import {
 } from './interceptors';
 import './polyfill';
 import { setupSwagger } from './setup-swagger';
-import { InitDataService } from 'libs/modules/init-data/init-data.service';
-import { Services } from './enum';
 
 export const setupApp = async (
-  appName: Services,
+  appName: string,
   app: NestExpressApplication,
 ) => {
   app.enableCors({ origin: '*' });
@@ -32,7 +30,6 @@ export const setupApp = async (
 
   const loggerService = app.get(LoggerService);
   const secretService = app.get(ConfigService);
-  const initDataService = app.get(InitDataService);
 
   loggerService.setApplication(appName);
   app.useLogger(loggerService);
@@ -67,10 +64,6 @@ export const setupApp = async (
     loggerService.log(
       `Documentation: http://localhost:${secretService.application.PORT}/docs`,
     );
-  }
-
-  if (appName === Services.API_CORE) {
-    await initDataService.initCore();
   }
 
   await app.listen(secretService.application.PORT);

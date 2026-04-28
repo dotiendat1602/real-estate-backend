@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Role, User } from '@prisma/client';
+import { User } from '@prisma/client';
 import { PrismaService } from 'libs/modules/prisma/prisma.service';
 import { TokenType } from 'libs/utils/enum';
 import { ApiException } from 'libs/utils/exception';
@@ -12,25 +12,27 @@ export class TokenService {
     private readonly jwtService: JwtService,
     private readonly configService: CoreConfigService,
     private readonly prismaService: PrismaService,
-  ) {}
+  ) { }
 
-  private async createAccessToken(data: { role: Role; userId: bigint }) {
+  private async createAccessToken(data: { user_id: number; email: string; role_id: number }) {
     return await this.jwtService.signAsync(
       {
-        userId: data.userId,
+        user_id: data.user_id,
+        email: data.email,
         type: TokenType.ACCESS_TOKEN,
-        role: data.role,
+        systemRole: data.role_id,
       },
       { expiresIn: this.configService.authentication.accessExpireTime },
     );
   }
 
-  private async createRefreshToken(data: { role: Role; userId: bigint }) {
+  private async createRefreshToken(data: { user_id: number; email: string; role_id: number }) {
     return await this.jwtService.signAsync(
       {
-        userId: data.userId,
-        type: TokenType.REFRESH_TOKEN,
-        role: data.role,
+        user_id: data.user_id,
+        email: data.email,
+        type: TokenType.ACCESS_TOKEN,
+        systemRole: data.role_id,
       },
       { expiresIn: this.configService.authentication.refreshExpireTime },
     );
@@ -38,13 +40,15 @@ export class TokenService {
 
   async signToken(user: User, isAccessToken = false) {
     const accessToken = await this.createAccessToken({
-      userId: user.id,
-      role: user.role,
+      user_id: user.id,
+      email: user.email,
+      role_id: user.roleId,
     });
 
     const refreshToken = await this.createRefreshToken({
-      userId: user.id,
-      role: user.role,
+      user_id: user.id,
+      email: user.email,
+      role_id: user.roleId,
     });
 
     if (isAccessToken) {

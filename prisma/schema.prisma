@@ -1,12 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -14,46 +7,752 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  ADMIN
-  USER
-}
-
-model User {
-  id        BigInt   @id @default(autoincrement())
-  name      String   @db.VarChar(255)
-  email     String   @db.VarChar(255)
-  photoUrl  String?  @db.VarChar(255)
-  password  String   @db.VarChar(255) // Mã hash của mật khẩu
-  isBan     Boolean  @default(false)
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([email])
-  @@map("users")
-}
-
-
-enum ValueType {
-  NUMBER
-  STRING
-  BOOLEAN
-}
-
-model Config {
-  key       String    @id @db.VarChar(255)
-  valueType ValueType
-  value     String    @db.Text
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  @@map("configs")
-}
+// -------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------
 
 enum StatusLogAction {
   INACTIVE
   ACTIVE
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
+
+enum PostStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum PostType {
+  SALE
+  RENT
+  OTHER
+}
+
+enum PostSource {
+  BATDONGSAN
+  ESTATEIN
+  OTHER
+}
+
+enum FurnitureStatus {
+  UNFURNISHED
+  PARTLY_FURNISHED
+  FULLY_FURNISHED
+}
+
+enum LegalStatus {
+  FREEHOLD
+  LEASEHOLD
+  RED_BOOK
+  PINK_BOOK
+  SALE_CONTRACT // Hợp đồng mua bán
+  OTHER
+}
+
+enum DepositStatus {
+  PENDING
+  AUTHORIZED
+  CONFIRMED
+  REFUNDED
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
+enum RoleType {
+  ADMIN
+  MANAGER
+  USER
+  AGENT
+}
+
+enum SystemPermissionType {
+  MANAGE_USERS
+  MANAGE_ROLES
+  MANAGE_PAYMENT
+  MANAGE_PROPERTY
+  MANAGE_POST
+  MANAGE_CATEGORY
+  MANAGE_AMENITIES
+  MANAGE_LEADS
+  MANAGE_CHAT
+  MANAGE_APPOINTMENT
+}
+
+enum OtpPurpose {
+  RESET_PASSWORD
+}
+
+enum AmenityCategory {
+  INTERIOR // Nội thất (máy lạnh, tủ âm tường...)
+  EXTERIOR // Ngoài trời/cảnh quan (ban công, sân vườn...)
+  SECURITY // An ninh (camera, thẻ từ...)
+  ACCESSIBILITY // Tiếp cận/khuyết tật (thang máy, ram dốc...)
+  COMMUNITY // Tiện ích cộng đồng (hồ bơi, phòng gym...)
+  PARKING // Đỗ xe (ô tô, xe máy, sạc EV...)
+  KITCHEN // Bếp (bếp âm, máy rửa chén...)
+  BATHROOM // Phòng tắm (bồn tắm, vách kính...)
+  ENTERTAINMENT // Giải trí (phòng chiếu, karaoke...)
+  ENERGY // Tiết kiệm năng lượng (solar, cách nhiệt...)
+  SMART_HOME // Nhà thông minh (khóa điện tử, cảm biến...)
+  PET_FRIENDLY // Thân thiện thú cưng
+  BUSINESS // Phù hợp kinh doanh (mặt tiền, biển hiệu...)
+}
+
+enum UtilityCategory {
+  COMMERCIAL_SHOPPING // TTTM/siêu thị/cửa hàng
+  HEALTHCARE // Bệnh viện/phòng khám/nhà thuốc
+  EDUCATION // Trường học/mẫu giáo
+  TRANSPORT // Bến xe/ga/tàu điện
+  PARK_PLAZA // Công viên/quảng trường
+  FINANCIAL // Ngân hàng/ATM
+  GOVERNMENT // Cơ quan hành chính
+  ENTERTAINMENT // Giải trí/rạp phim
+  DINING // Ăn uống/nhà hàng/quán
+  SPORTS // Thể thao/gyms/sân bãi
+  RELIGIOUS // Chùa/nhà thờ
+  FUEL // Cây xăng/sạc EV
+  ACCOMMODATION // Khách sạn/lưu trú
+  PARKING // Bãi đỗ xe
+  OTHER // Khác
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  RESCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+// -------------------------------------------------------
+// USERS & RBAC
+// -------------------------------------------------------
+
+model User {
+  id              Int       @id @default(autoincrement()) @map("id")
+  roleId          Int       @map("role_id")
+  email           String    @unique
+  name            String?
+  password        String
+  phone           String?
+  lastLogin       DateTime? @map("last_login")
+  status          Status    @default(ACTIVE)
+  aiChatSessionId Int?      @map("ai_chat_session_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  // Relations
+  role            Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdPosts    Post[]      @relation("PostCreatedBy")
+  approvedPosts   Post[]      @relation("PostApprovedBy")
+  rejectedPosts   Post[]      @relation("PostRejectedBy")
+  propertiesOwned Property[]  @relation("PropertyOwner")
+  otps            Otp[]
+  favorites       Favorites[]
+
+  depositsAsBuyer  Deposit[] @relation("DepositBuyer")
+  depositsAsSeller Deposit[] @relation("DepositSeller")
+  depositsAsAgent  Deposit[] @relation("DepositAgent")
+
+  leadsAsBuyer Lead[] @relation("LeadBuyer")
+  leadsAsAgent Lead[] @relation("LeadAgent")
+
+  conversationsAsBuyer Conversation[]        @relation("ConvBuyer")
+  conversationsAsAgent Conversation[]        @relation("ConvAgent")
+  messages             Message[]             @relation("MsgSender")
+  appointmentsAsBuyer  Appointment[]         @relation("ApptBuyer")
+  appointmentsAsAgent  Appointment[]         @relation("ApptAgent")
+  reports              Report[]              @relation("ReportReporter")
+  auditLogs            AuditLog[]
+  savedSearches        SavedSearch[]
+  passwordResetToken   PasswordResetToken[]
+  savedNewsArticles    SavedNewsArticle[]
+  agentProfile         AgentProfile?
+  chatBotConversations ChatBotConversation[]
+  properties           Property[]
+
+  @@map("users")
+}
+
+model Role {
+  id          Int      @id @default(autoincrement()) @map("id")
+  name        RoleType @unique
+  description String?
+
+  users       User[]
+  permissions RolesPermissions[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id   Int                  @id @default(autoincrement()) @map("id")
+  name SystemPermissionType @unique
+
+  roles RolesPermissions[]
+
+  @@map("permissions")
+}
+
+model RolesPermissions {
+  roleId       Int @map("role_id")
+  permissionId Int @map("permission_id")
+
+  // Relations
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("roles_permissions")
+}
+
+model Otp {
+  id         Int         @id @default(autoincrement()) @map("id")
+  code       String
+  userId     Int         @map("user_id")
+  purpose    OtpPurpose?
+  expireTime DateTime    @map("expire_time")
+  used       Boolean     @default(false)
+  attempts   Int         @default(0)
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("otp")
+}
+
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  tokenHash String    @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+// -------------------------------------------------------
+// LOCATION
+// -------------------------------------------------------
+
+model Province {
+  id   Int    @id @default(autoincrement()) @map("id")
+  name String
+
+  districts  District[]
+  properties Property[]
+  utilities  Utility[]
+
+  @@map("provinces")
+}
+
+model District {
+  id         Int    @id @default(autoincrement()) @map("id")
+  name       String
+  provinceId Int    @map("province_id")
+
+  province   Province   @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  wards      Ward[]
+  properties Property[]
+  utilities  Utility[]
+
+  @@index([provinceId])
+  @@map("districts")
+}
+
+model Ward {
+  id         Int    @id @default(autoincrement()) @map("id")
+  name       String
+  districtId Int    @map("district_id")
+
+  district   District   @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  properties Property[]
+  utilities  Utility[]
+
+  @@index([districtId])
+  @@map("wards")
+}
+
+// -------------------------------------------------------
+// CATEGORIES
+// -------------------------------------------------------
+
+model PropertyCategory {
+  id                  Int       @id @default(autoincrement()) @map("category_id")
+  categoryName        String    @unique @map("category_name")
+  categoryDescription String?   @default("") @map("category_description")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
+
+  properties Property[]
+
+  @@map("categories")
+}
+
+// -------------------------------------------------------
+// PROPERTIES
+// -------------------------------------------------------
+
+model Property {
+  id              Int              @id @default(autoincrement()) @map("id")
+  title           String
+  description     String?          @db.Text
+  price           Decimal          @db.Decimal(18, 2)
+  area            Decimal?         @db.Decimal(10, 2)
+  bedroomNumber   Int?
+  toiletNumber    Int?
+  floorNumber     Int?
+  parking         Boolean?
+  orientation     String?
+  frontage        Decimal?         @db.Decimal(6, 2)
+  roadWidth       Decimal?         @db.Decimal(6, 2)
+  furnitureStatus FurnitureStatus? @map("furniture_status")
+  legalStatus     LegalStatus?     @map("legal_status")
+  yearBuilt       Int?             @map("year_built")
+  lat             Decimal?         @db.Decimal(9, 6)
+  lon             Decimal?         @db.Decimal(9, 6)
+  location        String?
+  categoryId      Int              @map("category_id")
+  ownerId         Int?             @map("owner_id")
+  createdById     Int?             @map("created_by_id")
+  wardId          Int?             @map("ward_id")
+  districtId      Int?             @map("district_id")
+  provinceId      Int?             @map("province_id")
+  status          Status           @default(ACTIVE)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at")
+  deletedAt       DateTime?        @map("deleted_at")
+
+  // Relations
+  category  PropertyCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  owner     User?            @relation("PropertyOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  createdBy User?            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  ward      Ward?            @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  district  District?        @relation(fields: [districtId], references: [id], onDelete: SetNull)
+  province  Province?        @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+
+  images            PropertyImage[]
+  propertyAmenities PropertyAmenity[]
+  posts             Post[]
+  propertyUtilities PropertyUtility[]
+  planningMatches   PropertyPlanningMatch[]
+
+  @@index([status])
+  @@index([provinceId, districtId, wardId])
+  @@index([price])
+  @@index([area])
+  @@index([bedroomNumber])
+  @@index([ownerId])
+  @@map("properties")
+}
+
+model PropertyImage {
+  id         Int      @id @default(autoincrement()) @map("id")
+  propertyId Int      @map("property_id")
+  imageUrl   String   @map("image_url")
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, imageUrl])
+  @@index([propertyId])
+  @@map("property_images")
+}
+
+// -------------------------------------------------------
+// AMENITIES
+// -------------------------------------------------------
+
+model Amenity {
+  id        Int              @id @default(autoincrement()) @map("id")
+  name      String           @unique
+  category  AmenityCategory?
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime?        @map("deleted_at")
+
+  properties PropertyAmenity[]
+
+  @@map("amenities")
+}
+
+model PropertyAmenity {
+  id         Int       @id @default(autoincrement()) @map("id")
+  propertyId Int       @map("property_id")
+  amenityId  Int       @map("amenity_id")
+  deletedAt  DateTime? @map("deleted_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenity  Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, amenityId])
+  @@map("property_amenities")
+}
+
+// -------------------------------------------------------
+// UTILITIES (poi xung quanh)
+// -------------------------------------------------------
+
+model PropertyUtility {
+  id         Int @id @default(autoincrement()) @map("id")
+  propertyId Int @map("property_id")
+  utilityId  Int @map("utility_id")
+
+  distanceM   Decimal? @map("distance_m") @db.Decimal(8, 2) // khoảng cách theo mét
+  travelTimeS Int?     @map("travel_time_s") // thời gian di chuyển (giây)
+  isPrimary   Boolean? @default(false) @map("is_primary")
+  note        String?
+
+  deletedAt DateTime? @map("deleted_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  utility  Utility  @relation(fields: [utilityId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, utilityId])
+  @@index([utilityId])
+  @@map("property_utilities")
+}
+
+model Utility {
+  id              Int             @id @default(autoincrement()) @map("id")
+  utilityCategory UtilityCategory @map("utility_category")
+  utilityName     String?         @map("utility_name")
+  lat             Decimal?        @db.Decimal(9, 6)
+  lon             Decimal?        @db.Decimal(9, 6)
+  location        String?
+  provinceId      Int?            @map("province_id")
+  districtId      Int?            @map("district_id")
+  wardId          Int?            @map("ward_id")
+  deletedAt       DateTime?       @map("deleted_at")
+
+  // quan hệ địa lý giữ nguyên
+  province Province? @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  district District? @relation(fields: [districtId], references: [id], onDelete: SetNull)
+  ward     Ward?     @relation(fields: [wardId], references: [id], onDelete: SetNull)
+
+  properties PropertyUtility[]
+
+  @@index([utilityCategory])
+  @@index([provinceId, districtId, wardId])
+  @@map("utilities")
+}
+
+// -------------------------------------------------------
+// POSTS & FAVORITES (Moderation)
+// -------------------------------------------------------
+
+model Post {
+  id           Int        @id @default(autoincrement()) @map("id")
+  propertyId   Int        @map("property_id")
+  postTitle    String     @map("post_title")
+  postType     PostType?  @map("post_type")
+  postContent  String?    @map("post_content") @db.Text
+  postStatus   PostStatus @default(DRAFT) @map("post_status")
+  approvedById Int?       @map("approved_by_id")
+  approvedAt   DateTime?  @map("approved_at")
+  rejectedById Int?       @map("rejected_by_id")
+  rejectReason String?    @map("reject_reason")
+  publishedAt  DateTime?  @map("published_at")
+  createdById  Int        @map("created_by_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at")
+  deletedAt    DateTime?  @map("deleted_at")
+
+  source    PostSource? @map("source")
+  sourceUrl String?     @map("source_url")
+  sourceUid String?     @map("source_uid") // id hoặc hash từ URL
+
+  // Relations
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy  User     @relation("PostCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy User?    @relation("PostApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedBy User?    @relation("PostRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+
+  favorites      Favorites[]
+  deposits       Deposit[]
+  leads          Lead[]
+  conversations  Conversation[]
+  appointments   Appointment[]
+  slugs          PostSlug[]
+  reports        Report[]
+  postEmbeddings PostEmbedding[]
+
+  @@index([postStatus])
+  @@index([createdById])
+  @@index([propertyId])
+  @@index([publishedAt])
+  @@map("posts")
+}
+
+model PostEmbedding {
+  id       BigInt @id @default(autoincrement())
+  postId   Int
+  chunkIdx Int    @default(0)
+  content  String @db.Text
+
+  embedding Unsupported("vector(384)")
+  metadata  Json?
+
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_embeddings")
+}
+
+model Favorites {
+  id        Int       @id @default(autoincrement()) @map("id")
+  userId    Int       @map("user_id")
+  postId    Int       @map("post_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([userId])
+  @@index([postId])
+  @@map("favorite_list")
+}
+
+// -------------------------------------------------------
+// DEPOSITS (Đặt cọc)
+// -------------------------------------------------------
+
+model Deposit {
+  id     Int @id @default(autoincrement()) @map("id")
+  postId Int @map("post_id")
+
+  buyerId  Int  @map("buyer_id")
+  sellerId Int  @map("seller_id") // NEW: chủ thể nhận cọc (owner/landlord/seller)
+  agentId  Int? @map("agent_id")
+
+  amount         Decimal       @db.Decimal(18, 2)
+  status         DepositStatus @default(PENDING)
+  provider       String?
+  transactionRef String?       @unique @map("transaction_ref")
+
+  holdExpiresAt DateTime? @map("hold_expires_at")
+  paidAt        DateTime? @map("paid_at")
+  confirmedAt   DateTime? @map("confirmed_at")
+  releasedAt    DateTime? @map("released_at")
+  note          String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  buyer  User  @relation("DepositBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller User  @relation("DepositSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+  agent  User? @relation("DepositAgent", fields: [agentId], references: [id], onDelete: Restrict)
+
+  // (tuỳ chọn) Nếu muốn chặn 1 buyer đặt cọc trùng cho cùng 1 post (tuỳ nghiệp vụ):
+  // @@unique([postId, buyerId])
+
+  @@index([postId])
+  @@index([buyerId])
+  @@index([sellerId]) // NEW
+  @@index([agentId])
+  @@index([status])
+  @@map("deposits")
+}
+
+// -------------------------------------------------------
+// LEADS / CHAT / APPOINTMENTS
+// -------------------------------------------------------
+
+enum LeadStatus {
+  NEW // Mới tạo, chưa xử lý
+  CONTACTED // Đã liên hệ
+  FOLLOW_UP // Đang theo dõi / chờ phản hồi
+  NEGOTIATION // Đang thương lượng
+  CONVERTED // Đã chuyển đổi thành giao dịch
+  LOST // Mất lead / không tiềm năng
+  ARCHIVED // Lưu trữ, không hoạt động
+}
+
+model Lead {
+  id        Int        @id @default(autoincrement()) @map("id")
+  postId    Int        @map("post_id")
+  buyerId   Int?       @map("buyer_id")
+  agentId   Int?       @map("agent_id")
+  name      String?
+  email     String?
+  phone     String?
+  message   String?    @db.Text
+  note      String?    @db.Text
+  status    LeadStatus @default(NEW)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime?  @map("deleted_at")
+
+  post  Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  buyer User? @relation("LeadBuyer", fields: [buyerId], references: [id], onDelete: SetNull)
+  agent User? @relation("LeadAgent", fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([postId])
+  @@index([buyerId])
+  @@index([agentId])
+  @@index([status])
+  @@map("leads")
+}
+
+model Conversation {
+  id            Int       @id @default(autoincrement()) @map("id")
+  postId        Int?      @map("post_id")
+  buyerId       Int?      @map("buyer_id")
+  agentId       Int?      @map("agent_id")
+  lastMessageAt DateTime? @map("last_message_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime? @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  post  Post? @relation(fields: [postId], references: [id], onDelete: SetNull)
+  buyer User? @relation("ConvBuyer", fields: [buyerId], references: [id], onDelete: SetNull)
+  agent User? @relation("ConvAgent", fields: [agentId], references: [id], onDelete: SetNull)
+
+  messages Message[]
+
+  @@unique([postId, buyerId, agentId])
+  @@index([postId])
+  @@index([buyerId])
+  @@index([agentId])
+  @@map("conversations")
+}
+
+model Message {
+  id             Int       @id @default(autoincrement()) @map("id")
+  conversationId Int       @map("conversation_id")
+  senderId       Int       @map("sender_id")
+  content        String?   @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime? @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("MsgSender", fields: [senderId], references: [id])
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model Appointment {
+  id          Int                @id @default(autoincrement()) @map("id")
+  postId      Int                @map("post_id")
+  buyerId     Int                @map("buyer_id")
+  agentId     Int?               @map("agent_id") // Add agentId later so that it is optinal in db -> required in service
+  scheduledAt DateTime           @map("scheduled_at")
+  location    String?
+  status      AppointmentStatus? @default(SCHEDULED)
+  notes       String?
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @default(now()) @updatedAt @map("updated_at")
+  deletedAt   DateTime?          @map("deleted_at")
+
+  post  Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  buyer User  @relation("ApptBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  agent User? @relation("ApptAgent", fields: [agentId], references: [id], onDelete: Restrict)
+
+  @@index([postId])
+  @@index([buyerId])
+  @@index([agentId])
+  @@index([scheduledAt])
+  @@map("appointments")
+}
+
+// -------------------------------------------------------
+// CONTENT / SEO / QA
+// -------------------------------------------------------
+
+enum ReportStatus {
+  PENDING // Báo cáo mới, chưa xử lý
+  UNDER_REVIEW // Đang được kiểm tra
+  ACTION_TAKEN // Đã xử lý (đã xóa bài, cảnh cáo, v.v.)
+  REJECTED // Báo cáo bị từ chối (không hợp lệ)
+  RESOLVED // Đã giải quyết hoàn tất
+}
+
+model Report {
+  id         Int          @id @default(autoincrement()) @map("id")
+  postId     Int          @map("post_id")
+  reporterId Int?         @map("reporter_id")
+  reason     String?
+  detail     String?      @db.Text
+  status     ReportStatus @default(PENDING)
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  post     Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reporter User? @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@index([postId])
+  @@index([reporterId])
+  @@index([status])
+  @@map("reports")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement()) @map("id")
+  userId    Int?     @map("user_id")
+  action    String
+  entity    String?
+  entityId  Int?     @map("entity_id")
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+model SavedSearch {
+  id          Int      @id @default(autoincrement()) @map("id")
+  userId      Int      @map("user_id")
+  name        String?
+  filtersJson Json     @map("filters_json")
+  notifyEmail Boolean  @default(false) @map("notify_email")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("saved_searches")
+}
+
+model PostSlug {
+  id        Int      @id @default(autoincrement()) @map("id")
+  postId    Int      @map("post_id")
+  slug      String   @unique
+  isCurrent Boolean  @default(true) @map("is_current")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([isCurrent])
+  @@map("post_slugs")
 }
 
 model LogAction {
@@ -65,11 +764,297 @@ model LogAction {
   query     String          @db.Text
   now       DateTime        @default(now())
   data      String          @db.Text
-  timeCall  Int
+  timeCall  Int             @map("time_call")
   status    StatusLogAction
-  userId    BigInt?
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  userId    BigInt?         @map("user_id")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @default(now()) @updatedAt @map("updated_at")
 
   @@map("log_actions")
+}
+
+// -------------------------------------------------------
+// NEWS
+// -------------------------------------------------------
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model NewsTopic {
+  id   Int    @id @default(autoincrement()) @map("id")
+  name String @unique @map("name")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  articles NewsArticle[]
+
+  @@map("news_topics")
+}
+
+model NewsArticle {
+  id      Int @id @default(autoincrement()) @map("id")
+  topicId Int @map("topic_id")
+
+  title         String  @map("title")
+  excerpt       String? @map("excerpt") @db.Text
+  content       String? @map("content") @db.Text
+  coverImageUrl String? @map("cover_image_url")
+
+  readMin     Int?       @map("read_min")
+  status      NewsStatus @default(DRAFT) @map("status")
+  publishedAt DateTime?  @map("published_at")
+
+  isFeatured Boolean @default(false) @map("is_featured")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  topic   NewsTopic          @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  savedBy SavedNewsArticle[]
+
+  @@index([status, publishedAt])
+  @@index([topicId])
+  @@index([isFeatured])
+  @@map("news_articles")
+}
+
+model SavedNewsArticle {
+  id        Int      @id @default(autoincrement()) @map("id")
+  userId    Int      @map("user_id")
+  articleId Int      @map("article_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId])
+  @@index([articleId])
+  @@map("saved_news_articles")
+}
+
+model NewsletterSubscriber {
+  id        Int      @id @default(autoincrement()) @map("id")
+  email     String   @unique @map("email")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("newsletter_subscribers")
+}
+
+model AgentProfile {
+  id     Int @id @default(autoincrement()) @map("id")
+  userId Int @unique @map("user_id")
+
+  title  String? @db.VarChar(120)
+  rating Decimal @default(0) @db.Decimal(3, 2) // 0.00 - 9.99 (tuỳ bạn)
+  deals  Int     @default(0)
+
+  areas String[] @default([]) // text[]
+  tags  String[] @default([]) // text[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("agent_profiles")
+}
+
+model Contacts {
+  id        Int       @id @default(autoincrement()) @map("id")
+  name      String    @map("name")
+  email     String    @map("email")
+  phone     String?   @map("phone")
+  topic     String    @map("topic")
+  subject   String    @map("subject")
+  message   String    @map("message") @db.Text
+  status    String    @map("status")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("contacts")
+}
+
+// -------------------------------------------------------
+// CHATBOT CONVERSATIONS - MESSAGES
+// -------------------------------------------------------
+
+enum ChatParticipantType {
+  USER
+  CHATBOT
+}
+
+model ChatBotConversation {
+  id            Int       @id @default(autoincrement()) @map("id")
+  userId        Int       @map("user_id")
+  lastMessageAt DateTime? @map("last_message_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime? @default(now()) @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatBotMessage[]
+
+  @@index([userId])
+  @@map("chatbot_conversations")
+}
+
+model ChatBotMessage {
+  id                    Int                 @id @default(autoincrement()) @map("id")
+  chatbotConversationId Int                 @map("chatbot_conversation_id")
+  senderType            ChatParticipantType @map("sender_type")
+  content               String              @db.Text
+  metadata              Json? // Lưu citations, topK, v.v.
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime?           @default(now()) @updatedAt @map("updated_at")
+  deletedAt             DateTime?           @map("deleted_at")
+
+  chatbotConversation ChatBotConversation @relation(fields: [chatbotConversationId], references: [id], onDelete: Cascade)
+
+  @@index([chatbotConversationId])
+  @@index([senderType])
+  @@map("chatbot_messages")
+}
+
+// -------------------------------------------------------
+// PLANNING - Quy hoạch
+// -------------------------------------------------------
+
+enum PlanningSourceType {
+  QHKHSDD_HANOI
+  QUYHOACH_HANOI
+}
+
+enum PlanningLookupStatus {
+  MATCHED
+  NO_MATCH
+  ERROR
+}
+
+enum PlanningConfidence {
+  HIGH
+  MEDIUM
+  LOW
+  UNKNOWN
+}
+
+enum PlanningRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum DocumentDownloadStatus {
+  PENDING
+  DOWNLOADED
+  FAILED
+}
+
+model PlanningCoordinateLookup {
+  id          Int                  @id @default(autoincrement()) @map("id")
+  source      PlanningSourceType
+  lat         Decimal              @db.Decimal(10, 7)
+  lng         Decimal              @db.Decimal(10, 7)
+  kyQuyHoach  String?              @map("ky_quy_hoach")
+  status      PlanningLookupStatus
+  rawResponse Json?                @map("raw_response")
+  queriedAt   DateTime             @default(now()) @map("queried_at")
+  createdAt   DateTime             @default(now()) @map("created_at")
+
+  zones           PlanningZone[]
+  propertyMatches PropertyPlanningMatch[]
+
+  @@unique([lat, lng, kyQuyHoach, source])
+  @@index([lat, lng])
+  @@index([kyQuyHoach])
+  @@map("planning_coordinate_lookups")
+}
+
+model PlanningZone {
+  id                Int      @id @default(autoincrement()) @map("id")
+  lookupId          Int      @map("lookup_id")
+  maHoSo            String?  @map("ma_ho_so")
+  loaiDatHT         String?  @map("loai_dat_ht")
+  tenLoaiDatHT      String?  @map("ten_loai_dat_ht")
+  loaiDatQH         String?  @map("loai_dat_qh")
+  tenLoaiDatQH      String?  @map("ten_loai_dat_qh")
+  rawGeomWkt        String?  @map("raw_geom_wkt") @db.Text
+  geojsonSimplified Json?    @map("geojson_simplified")
+  bbox              Json?
+  attributesJson    Json?    @map("attributes_json")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  lookup          PlanningCoordinateLookup @relation(fields: [lookupId], references: [id], onDelete: Cascade)
+  dossier         PlanningDossier?         @relation(fields: [maHoSo], references: [maHoSo])
+  propertyMatches PropertyPlanningMatch[]
+
+  @@index([lookupId])
+  @@index([maHoSo])
+  @@map("planning_zones")
+}
+
+model PlanningDossier {
+  id           Int                @id @default(autoincrement()) @map("id")
+  source       PlanningSourceType
+  maHoSo       String             @unique @map("ma_ho_so")
+  tenHoSo      String             @map("ten_ho_so")
+  districtName String?            @map("district_name")
+  districtCode String?            @map("district_code")
+  rawResponse  Json?              @map("raw_response")
+  fetchedAt    DateTime           @default(now()) @map("fetched_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at")
+
+  zones     PlanningZone[]
+  documents PlanningDocument[]
+
+  @@index([districtCode])
+  @@map("planning_dossiers")
+}
+
+model PlanningDocument {
+  id             Int                    @id @default(autoincrement()) @map("id")
+  dossierId      Int                    @map("dossier_id")
+  title          String
+  docType        String?                @map("doc_type")
+  format         String?
+  sourcePath     String?                @map("source_path")
+  sourceUrl      String?                @map("source_url") @db.Text
+  downloadStatus DocumentDownloadStatus @default(PENDING) @map("download_status")
+  rawMeta        Json?                  @map("raw_meta")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @default(now()) @updatedAt @map("updated_at")
+
+  dossier PlanningDossier @relation(fields: [dossierId], references: [id], onDelete: Cascade)
+
+  @@index([dossierId])
+  @@map("planning_documents")
+}
+
+model PropertyPlanningMatch {
+  id              Int                  @id @default(autoincrement()) @map("id")
+  propertyId      Int                  @map("property_id")
+  lookupId        Int?                 @map("lookup_id")
+  zoneId          Int?                 @map("zone_id")
+  status          PlanningLookupStatus
+  riskLevel       PlanningRiskLevel?   @map("risk_level")
+  confidenceLevel PlanningConfidence?  @map("confidence_level")
+  explanation     String?              @db.Text
+  matchedAt       DateTime             @default(now()) @map("matched_at")
+
+  property Property                  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  lookup   PlanningCoordinateLookup? @relation(fields: [lookupId], references: [id], onDelete: SetNull)
+  zone     PlanningZone?             @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId])
+  @@index([status])
+  @@map("property_planning_matches")
 }

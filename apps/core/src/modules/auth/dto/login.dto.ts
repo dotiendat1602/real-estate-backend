@@ -21,7 +21,7 @@ export class CoreUserLoginDto {
   @ApiProperty({
     description:
       'User password, should be at least 6 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character',
-    example: 'Password123',
+    example: 'Password@123',
   })
   @IsNotEmpty()
   @IsString()

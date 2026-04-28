@@ -4,7 +4,6 @@ import bcrypt from 'bcryptjs';
 import config from '../../assets/config.json';
 import { ConfigValueType, WeatherCode } from './enum';
 import { ConfigType } from '@nestjs/config';
-import { Config } from '@prisma/client';
 
 /**
  * generate hash from password or string
@@ -320,24 +319,6 @@ type OutputItem = {
     updatedAt: Date;
   };
 };
-
-export function convertDataConfigs(input: Config[]): OutputItem {
-  return input.reduce((acc, cur) => {
-    let convertedValue: string | number | boolean = cur.value;
-    const valueType = cur.valueType as ConfigValueType;
-    if (valueType === 'NUMBER') {
-      convertedValue = parseFloat(cur.value);
-    } else if (valueType === 'BOOLEAN') {
-      convertedValue = cur.value === 'TRUE';
-    }
-    acc[cur.key] = {
-      ...cur,
-      value: convertedValue,
-      valueType,
-    };
-    return acc;
-  }, {} as OutputItem);
-}
 
 export function hideImportantInformation(data: any, keys: string[]) {
   const result = JSON.parse(JSON.stringify(data));

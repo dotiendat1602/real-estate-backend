@@ -1,0 +1,124 @@
+services:
+  core:
+    image: ${CORE_IMAGE:?CORE_IMAGE is required}
+    container_name: real_estate_core
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${CORE_PORT:-3001}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    ports:
+      - "${CORE_PUBLISHED_PORT:-3001}:${CORE_PORT:-3001}"
+    mem_limit: ${CORE_MEMORY_LIMIT:-512m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - real-estate
+
+  scheduler:
+    image: ${SCHEDULER_IMAGE:?SCHEDULER_IMAGE is required}
+    container_name: real_estate_scheduler
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${SCHEDULER_PORT:-3002}
+      ENABLE_DOCS: ${SCHEDULER_ENABLE_DOCS:-no}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?ADMIN_EMAIL is required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      BATDONGSAN_HEADLESS: ${BATDONGSAN_HEADLESS:-true}
+      BATDONGSAN_CONCURRENCY: ${BATDONGSAN_CONCURRENCY:-1}
+    ports:
+      - "${SCHEDULER_PUBLISHED_PORT:-3002}:${SCHEDULER_PORT:-3002}"
+    mem_limit: ${SCHEDULER_MEMORY_LIMIT:-768m}
+    shm_size: ${SCHEDULER_SHM_SIZE:-512mb}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - real-estate
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: real_estate_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-realestate}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports:
+      - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PUBLISHED_PORT:-5432}:5432"
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-512m}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - real-estate
+
+  redis:
+    image: redis:7-alpine
+    container_name: real_estate_redis
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    ports:
+      - "${REDIS_BIND_IP:-127.0.0.1}:${REDIS_PUBLISHED_PORT:-6379}:6379"
+    mem_limit: ${REDIS_MEMORY_LIMIT:-128m}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - real-estate
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  real-estate:
+    name: ${DOCKER_NETWORK_NAME:-real_estate_network}
+    driver: bridge

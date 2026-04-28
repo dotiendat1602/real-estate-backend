@@ -1,0 +1,142 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: yarn prisma:generate
+
+      - name: Build core
+        run: yarn build:core
+
+      - name: Build scheduler
+        run: yarn build:scheduler
+
+  docker:
+    name: Build and push Docker images
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare image names
+        run: |
+          repo="${GITHUB_REPOSITORY,,}"
+          echo "CORE_IMAGE=${REGISTRY}/${repo}/core" >> "$GITHUB_ENV"
+          echo "SCHEDULER_IMAGE=${REGISTRY}/${repo}/scheduler" >> "$GITHUB_ENV"
+
+      - name: Login to GHCR
+        if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master')
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push core image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/core/Dockerfile
+          push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master') }}
+          tags: |
+            ${{ env.CORE_IMAGE }}:${{ github.sha }}
+            ${{ env.CORE_IMAGE }}:latest
+          cache-from: type=gha,scope=backend-core
+          cache-to: type=gha,mode=max,scope=backend-core
+
+      - name: Build and push scheduler image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/scheduler/Dockerfile
+          push: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master') }}
+          tags: |
+            ${{ env.SCHEDULER_IMAGE }}:${{ github.sha }}
+            ${{ env.SCHEDULER_IMAGE }}:latest
+          cache-from: type=gha,scope=backend-scheduler
+          cache-to: type=gha,mode=max,scope=backend-scheduler
+
+  deploy:
+    name: Deploy backend
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Sync compose file
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          DEPLOY_PATH: ${{ secrets.BACKEND_DEPLOY_PATH || '/opt/real-estate/backend' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "mkdir -p '$DEPLOY_PATH'"
+          rsync -az -e "ssh -i ~/.ssh/deploy_key -p $VPS_PORT" docker-compose.prod.yml "$VPS_USER@$VPS_HOST:$DEPLOY_PATH/docker-compose.prod.yml"
+
+      - name: Deploy on VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          DEPLOY_PATH: ${{ secrets.BACKEND_DEPLOY_PATH || '/opt/real-estate/backend' }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "
+            set -e
+            cd '$DEPLOY_PATH'
+            if [ -n '$GHCR_PAT' ]; then
+              echo '$GHCR_PAT' | docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin
+            fi
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f
+          "

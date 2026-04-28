@@ -43,3 +43,7 @@ lerna-debug.log*
 !/**/**/.env.example
 
 !assets/.gitkeep
+
+.pw-bds-profile
+
+storage

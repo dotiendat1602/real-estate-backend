@@ -1,18 +1,42 @@
-FROM node:20-alpine 
-
-ADD . /app
+FROM node:20-bookworm-slim AS deps
 
 WORKDIR /app
 
-RUN ls /app -al
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-RUN npm i -g @nestjs/cli
+COPY package.json yarn.lock ./
+COPY apps/core/package.json apps/core/package.json
+COPY apps/scheduler/package.json apps/scheduler/package.json
 
-RUN yarn --force
+RUN yarn install --frozen-lockfile
 
-COPY apps/scheduler/package.json dist/apps/scheduler/
-COPY apps/scheduler/tsconfig.app.json dist/apps/scheduler/
+FROM deps AS builder
 
-RUN yarn build:scheduler 
+COPY nest-cli.json tsconfig.json tsconfig.build.json ./
+COPY prisma ./prisma
+COPY assets ./assets
+COPY apps ./apps
+COPY libs ./libs
+COPY types ./types
 
-CMD yarn start:scheduler:prod
+RUN yarn prisma:generate
+RUN yarn build:scheduler
+
+FROM node:20-bookworm-slim AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3002
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+COPY package.json yarn.lock ./
+
+RUN npx playwright install --with-deps chromium
+
+EXPOSE 3002
+
+CMD ["node", "dist/apps/scheduler/src/main.js"]

@@ -11,13 +11,46 @@ import { CoreConfigService } from './modules/config/core-config.service';
 import { HealthModule } from './modules/health/health.module';
 import { UserModule } from './modules/users/user.module';
 import { LogActionMiddleware } from 'libs/utils/middlewares/log-action.middleware';
-import { InitDataModule } from 'libs/modules/init-data/init-data.module';
+import { PropertyCategoryModule } from './modules/property-category/property-category.module';
+import { PropertyModule } from './modules/property/property.module';
+import { AmenityModule } from './modules/amenity/amenity.module';
+import { PropertyUtilityModule } from './modules/property-utility/property-utility.module';
+import { LocationModule } from './modules/locations/location.module';
+import { PostModule } from './modules/post/post.module';
+import { AppointmentModule } from './modules/appoitment/appointment.module';
+import { DepositModule } from './modules/deposit/deposit.module';
+import { AuthorizationModule } from './modules/authorization/authorization.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { SocketModule } from './socket/socket.module';
+import { LeadModule } from './modules/lead/lead.module';
+import { NewsModule } from './modules/news/news.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
+import { UploadFileModule } from './modules/upload-file/upload-file.module';
+import { PlanningModule } from './modules/planning/planning.module';
 
-const applications = [HealthModule, AuthModule, UserModule];
+const applications = [
+  HealthModule,
+  AuthModule,
+  UserModule,
+  PropertyCategoryModule,
+  PropertyModule,
+  AmenityModule,
+  PropertyUtilityModule,
+  LocationModule,
+  PostModule,
+  AppointmentModule,
+  DepositModule,
+  AuthorizationModule,
+  ChatModule,
+  LeadModule,
+  NewsModule,
+  ContactsModule,
+  UploadFileModule,
+  PlanningModule,
+];
 
 @Module({
   imports: [
-    InitDataModule,
     LoggerModule,
     ConfigModule.register({
       envFilePath: './apps/core/.env',
@@ -25,9 +58,10 @@ const applications = [HealthModule, AuthModule, UserModule];
       exports: [CoreConfigService],
     }),
     ClsModule,
-    CacheModule,
-    RedlockModule,
+    // CacheModule,
+    // RedlockModule,
     QueueModule,
+    SocketModule,
     PrismaModule.forRootAsync({
       isGlobal: true,
       useFactory: () => {
