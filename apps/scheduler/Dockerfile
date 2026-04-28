@@ -23,7 +23,7 @@ COPY types ./types
 RUN yarn prisma:generate
 RUN yarn build:scheduler
 
-FROM mcr.microsoft.com/playwright:v1.58.2-noble AS runner
+FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
@@ -34,6 +34,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY package.json yarn.lock ./
+
+RUN npx playwright install --with-deps chromium
 
 EXPOSE 3002
 
