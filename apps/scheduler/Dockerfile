@@ -30,7 +30,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3002
 
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY package.json yarn.lock ./
@@ -39,4 +39,4 @@ RUN npx playwright install --with-deps chromium
 
 EXPOSE 3002
 
-CMD ["node", "dist/apps/scheduler/src/main.js"]
+CMD ["node", "dist/apps/scheduler/apps/scheduler/src/main.js"]
