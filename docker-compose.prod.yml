@@ -1,6 +1,6 @@
 services:
   core:
-    image: ${CORE_IMAGE:?CORE_IMAGE is required}
+    image: ghcr.io/dotiendat1602/real-estate-backend/core:latest
     container_name: real_estate_core
     env_file:
       - ./.env
@@ -29,7 +29,7 @@ services:
       - real-estate
 
   scheduler:
-    image: ${SCHEDULER_IMAGE:?SCHEDULER_IMAGE is required}
+    image: ghcr.io/dotiendat1602/real-estate-backend/scheduler:latest
     container_name: real_estate_scheduler
     env_file:
       - ./.env
@@ -67,16 +67,16 @@ services:
     image: pgvector/pgvector:pg16
     container_name: real_estate_postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-realestate}
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: real-estate
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Password@123
     ports:
       - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PUBLISHED_PORT:-5432}:5432"
     mem_limit: ${POSTGRES_MEMORY_LIMIT:-512m}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d real-estate"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -92,16 +92,16 @@ services:
   redis:
     image: redis:7-alpine
     container_name: real_estate_redis
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "myredispassword"]
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_PASSWORD: myredispassword
     ports:
       - "${REDIS_BIND_IP:-127.0.0.1}:${REDIS_PUBLISHED_PORT:-6379}:6379"
     mem_limit: ${REDIS_MEMORY_LIMIT:-128m}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping"]
+      test: ["CMD-SHELL", "redis-cli -a myredispassword ping"]
       interval: 10s
       timeout: 5s
       retries: 5
