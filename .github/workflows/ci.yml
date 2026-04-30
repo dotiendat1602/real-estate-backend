@@ -111,7 +111,7 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
 
-      - name: Sync compose file
+      - name: Sync source
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
@@ -119,7 +119,21 @@ jobs:
           DEPLOY_PATH: ${{ secrets.BACKEND_DEPLOY_PATH || '/opt/real-estate/backend' }}
         run: |
           ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "mkdir -p '$DEPLOY_PATH'"
-          rsync -az -e "ssh -i ~/.ssh/deploy_key -p $VPS_PORT" docker-compose.prod.yml "$VPS_USER@$VPS_HOST:$DEPLOY_PATH/docker-compose.prod.yml"
+          rsync -az --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.vscode/' \
+            --exclude='.pw-bds-profile/' \
+            --include='.env.example' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='node_modules/' \
+            --exclude='**/node_modules/' \
+            --exclude='dist/' \
+            --exclude='coverage/' \
+            --exclude='storage/' \
+            -e "ssh -i ~/.ssh/deploy_key -p $VPS_PORT" \
+            ./ "$VPS_USER@$VPS_HOST:$DEPLOY_PATH/"
 
       - name: Deploy on VPS
         env:
@@ -130,9 +144,23 @@ jobs:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
         run: |
+          repo="${GITHUB_REPOSITORY,,}"
+          core_image="${REGISTRY}/${repo}/core:latest"
+          scheduler_image="${REGISTRY}/${repo}/scheduler:latest"
           ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "
             set -e
             cd '$DEPLOY_PATH'
+            touch .env
+            if grep -q '^CORE_IMAGE=' .env; then
+              sed -i 's|^CORE_IMAGE=.*|CORE_IMAGE=$core_image|' .env
+            else
+              printf '\nCORE_IMAGE=$core_image\n' >> .env
+            fi
+            if grep -q '^SCHEDULER_IMAGE=' .env; then
+              sed -i 's|^SCHEDULER_IMAGE=.*|SCHEDULER_IMAGE=$scheduler_image|' .env
+            else
+              printf '\nSCHEDULER_IMAGE=$scheduler_image\n' >> .env
+            fi
             if [ -n '$GHCR_PAT' ]; then
               echo '$GHCR_PAT' | docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin
             fi
