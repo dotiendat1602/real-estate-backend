@@ -1,6 +1,9 @@
 services:
   core:
-    image: ghcr.io/dotiendat1602/real-estate-backend/core:latest
+    image: ${CORE_IMAGE:?CORE_IMAGE is required}
+    build:
+      context: .
+      dockerfile: apps/core/Dockerfile
     container_name: real_estate_core
     env_file:
       - ./.env
@@ -29,7 +32,10 @@ services:
       - real-estate
 
   scheduler:
-    image: ghcr.io/dotiendat1602/real-estate-backend/scheduler:latest
+    image: ${SCHEDULER_IMAGE:?SCHEDULER_IMAGE is required}
+    build:
+      context: .
+      dockerfile: apps/scheduler/Dockerfile
     container_name: real_estate_scheduler
     env_file:
       - ./.env
