@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { CityKey, ModeKey } from "../../libs/types/crawl-batdongsan.type";
-import { IsEnum, IsOptional } from "class-validator";
+import { IsEnum, IsInt, IsOptional, Max, Min } from "class-validator";
 
 export class CrawlBatdongsanManualDto {
   @ApiPropertyOptional({
@@ -18,4 +18,28 @@ export class CrawlBatdongsanManualDto {
   @IsOptional()
   @IsEnum(['SALE', 'RENT'], { each: true })
   modes?: ModeKey[];
+
+  @ApiPropertyOptional({
+    description: 'Number of list pages to crawl per category for this manual run.',
+    example: 4,
+    minimum: 1,
+    maximum: 20,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  maxPagesPerCategory?: number;
+
+  @ApiPropertyOptional({
+    description: 'Maximum number of detail URLs to process for this manual run.',
+    example: 500,
+    minimum: 1,
+    maximum: 5000,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5000)
+  maxDetails?: number;
 }

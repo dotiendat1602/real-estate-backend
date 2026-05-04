@@ -25,7 +25,6 @@ export class AmenityController {
     return this.amenityService.getAllAmenityMetaData(category);
   }
 
-  @Auth()
   @Get()
   @HttpCode(HttpStatus.OK)
   async getAllAmenities(

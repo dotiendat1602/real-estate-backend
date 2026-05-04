@@ -43,11 +43,22 @@ export class AmenityService {
   async getAllAmenities(query: GetAllAmenityDto) {
     const pagingParams = assignPaging(query);
 
+    const sortWhitelist: Record<string, keyof Prisma.AmenityOrderByWithRelationInput> = {
+      id: 'id',
+      name: 'name',
+      category: 'category',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+    };
+    const sortKey = sortWhitelist[pagingParams.sortKey] ?? 'name';
+
     const orderObject = {
-      [pagingParams.sortKey || 'name']: pagingParams.sortOrder || 'asc',
+      [sortKey]: pagingParams.sortOrder || 'asc',
     };
 
-    const where: Prisma.AmenityWhereInput = {};
+    const where: Prisma.AmenityWhereInput = {
+      deletedAt: null,
+    };
 
     if (pagingParams.search) {
       const q = pagingParams.search.trim();

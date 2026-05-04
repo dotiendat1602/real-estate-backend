@@ -32,7 +32,8 @@
     "test:e2e": "jest --config ./apps/core/test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "db:seed": "ts-node ./prisma/seed.ts"
+    "db:seed": "ts-node ./prisma/seed.ts",
+    "db:seed:locations": "ts-node ./prisma/import-vietnam-locations.ts"
   },
   "prisma": {
     "seed": "ts-node ./prisma/seed.ts"

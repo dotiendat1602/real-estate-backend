@@ -52,6 +52,45 @@ type LaunchProxyConfig = {
   password?: string;
 };
 
+type LocationWard = {
+  id: number;
+  name: string;
+  districtId: number;
+  district?: LocationDistrict;
+  norm: string;
+  bare: string;
+};
+
+type LocationDistrict = {
+  id: number;
+  name: string;
+  provinceId: number;
+  province?: LocationProvince;
+  wards: LocationWard[];
+  norm: string;
+  bare: string;
+};
+
+type LocationProvince = {
+  id: number;
+  name: string;
+  districts: LocationDistrict[];
+  norm: string;
+  bare: string;
+};
+
+type LocationCache = {
+  provinces: LocationProvince[];
+  districts: LocationDistrict[];
+  wards: LocationWard[];
+};
+
+type LocationMatch = {
+  provinceId?: number;
+  districtId?: number;
+  wardId?: number;
+};
+
 type SeedAntiBotMetrics = {
   challengeHits: number;
   navigationAttempts: number;
@@ -134,7 +173,6 @@ export class CrawlBatdongsanService {
   private readonly accessToken = process.env.BATDONGSAN_ACCESS_TOKEN || "";
   private readonly refreshToken = process.env.BATDONGSAN_REFRESH_TOKEN || "";
   private readonly webshareApiKey = process.env.WEBSHARE_API_KEY || "";
-
   private webshareProxies: WebshareProxy[] = [];
   private webshareProxyIndex = 0;
   private webshareProxyLastFetch = 0;
@@ -152,6 +190,7 @@ export class CrawlBatdongsanService {
   private consecutiveChallengeCount = 0;
   private proxyRotationCount = 0;
   private seedCircuit = new Map<string, SeedCircuitState>();
+  private locationCache: LocationCache | null = null;
 
   @Cron("0 30 2 * * *", { timeZone: "Asia/Bangkok" })
   async crawlDaily() {
@@ -163,12 +202,19 @@ export class CrawlBatdongsanService {
 
   constructor(private readonly prisma: PrismaService) { }
 
-  async crawlProperties(opts?: { cities?: CityKey[]; modes?: ModeKey[] }) {
+  async crawlProperties(opts?: {
+    cities?: CityKey[];
+    modes?: ModeKey[];
+    maxPagesPerCategory?: number;
+    maxDetails?: number;
+  }) {
     const startedAt = Date.now();
     this.logger.log("Starting crawl job for batdongsan.com.vn");
 
     const cities = opts?.cities?.length ? opts.cities : (["HN", "HCM"] as CityKey[]);
     const modes = opts?.modes?.length ? opts.modes : (["SALE", "RENT"] as ModeKey[]);
+    const maxPagesPerCategory = this.normalizeManualPageLimit(opts?.maxPagesPerCategory);
+    const detailLimit = this.normalizeManualDetailLimit(opts?.maxDetails);
     const seeds = this.buildSeeds(cities, modes);
 
     let totalVisitedLinks = 0;
@@ -211,6 +257,7 @@ export class CrawlBatdongsanService {
       await this.bootstrapContext(pw);
 
       for (const seed of seeds) {
+        if (totalVisitedLinks >= detailLimit) break;
         if (this.isSeedCoolingDown(seed)) {
           totalSeedsSkippedByCircuit += 1;
           continue;
@@ -224,7 +271,8 @@ export class CrawlBatdongsanService {
 
         while (recoveryAttempt <= maxSeedRecoveries) {
           r = await this.crawlCategory(seed, {
-            remainingBudget: this.dailyHardLimit - totalVisitedLinks,
+            remainingBudget: detailLimit - totalVisitedLinks,
+            maxPagesPerCategory,
             pw,
             onDetailResult: async (detailResult) => {
               if (detailResult.status === "inserted") {
@@ -360,6 +408,16 @@ export class CrawlBatdongsanService {
 
   private async writeFinalReport(jsonPath: string, report: CrawlRunReport): Promise<void> {
     await fsp.writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  }
+
+  private normalizeManualPageLimit(value?: number): number {
+    if (!Number.isFinite(value)) return this.maxPagesPerCategory;
+    return Math.min(20, Math.max(1, Math.trunc(Number(value))));
+  }
+
+  private normalizeManualDetailLimit(value?: number): number {
+    if (!Number.isFinite(value)) return this.dailyHardLimit;
+    return Math.min(this.dailyHardLimit, Math.max(1, Math.trunc(Number(value))));
   }
 
   private getSeedMaxRecoveries(): number {
@@ -599,8 +657,17 @@ export class CrawlBatdongsanService {
   private async bootstrapContext(context: BrowserContext): Promise<void> {
     await this.hardenContext(context);
     await this.ensureAuthCookies(context);
-    await this.ensureLoggedIn(context);
+    if (this.shouldRequireLogin()) {
+      await this.ensureLoggedIn(context);
+    } else {
+      this.logger.log("Login wait skipped. Set BATDONGSAN_REQUIRE_LOGIN=true to require an authenticated crawl.");
+    }
     await this.warmUpContext(context);
+  }
+
+  private shouldRequireLogin(): boolean {
+    const raw = (process.env.BATDONGSAN_REQUIRE_LOGIN || "false").toLowerCase();
+    return ["1", "true", "yes"].includes(raw);
   }
 
   private getHeadlessFlag(): boolean {
@@ -828,19 +895,32 @@ export class CrawlBatdongsanService {
 
   private buildSeeds(cities: CityKey[], modes: ModeKey[]): CrawlSeed[] {
     const SALE_CATS = [
-      // 'ban-can-ho-chung-cu',
+      'ban-can-ho-chung-cu',
+      'ban-can-ho-chung-cu-mini',
       'ban-nha-rieng',
+      'ban-nha-mat-pho',
+      'ban-nha-biet-thu-lien-ke',
+      'ban-shophouse-nha-pho-thuong-mai',
       'ban-dat',
       'ban-dat-nen-du-an',
-      'ban-biet-thu-lien-ke',
+      'ban-trang-trai-khu-nghi-duong',
+      'ban-condotel',
+      'ban-kho-nha-xuong',
+      'ban-loai-bat-dong-san-khac',
     ];
 
     const RENT_CATS = [
-      // 'cho-thue-can-ho-chung-cu',
+      'cho-thue-can-ho-chung-cu',
+      'cho-thue-can-ho-chung-cu-mini',
       'cho-thue-nha-rieng',
+      'cho-thue-nha-biet-thu-lien-ke',
+      'cho-thue-nha-mat-pho',
+      'cho-thue-shophouse-nha-pho-thuong-mai',
       'cho-thue-nha-tro-phong-tro',
       'cho-thue-van-phong',
-      'cho-thue-cua-hang-ki-ot',
+      'cho-thue-sang-nhuong-cua-hang-ki-ot',
+      'cho-thue-kho-nha-xuong-dat',
+      'cho-thue-loai-bat-dong-san-khac',
     ];
 
     const citySlug: Record<CityKey, string> = {
@@ -875,6 +955,7 @@ export class CrawlBatdongsanService {
     seed: CrawlSeed,
     ctx: {
       remainingBudget: number;
+      maxPagesPerCategory: number;
       pw: BrowserContext;
       onDetailResult?: (result: CrawlDetailResult) => Promise<void>;
     },
@@ -890,7 +971,7 @@ export class CrawlBatdongsanService {
     const challengeStart = this.challengeDetectedCount;
     const navStart = this.navigationAttemptCount;
 
-    for (let pageNo = 1; pageNo <= this.maxPagesPerCategory; pageNo++) {
+    for (let pageNo = 1; pageNo <= ctx.maxPagesPerCategory; pageNo++) {
       if (visited >= ctx.remainingBudget) break;
 
       const listUrl = this.buildListUrl(seed.categoryPath, pageNo);
@@ -1203,15 +1284,17 @@ export class CrawlBatdongsanService {
   private parseDetail($: cheerio.CheerioAPI, html: string, sourceUrl: string, sourceUid: string): CrawledProperty {
     const title = $("h1").first().text().trim();
 
-    const description =
-      this.firstNonEmptyText($, [
-        ".re__detail-content",
-        ".re__detail-content-wrapper",
-        ".re__pr-description",
-        '[class*="description"]',
-      ]) || "";
+    const descriptionSelectors = [
+      ".re__detail-content",
+      ".re__detail-content-wrapper",
+      ".re__pr-description",
+      '[class*="description"]',
+    ];
 
-    const formattedDescription = formatDescription(description);
+    const descriptionHtml = this.firstNonEmptyHtml($, descriptionSelectors);
+    const descriptionText = this.firstNonEmptyText($, descriptionSelectors) || "";
+
+    const formattedDescription = descriptionHtml || formatDescription(descriptionText);
 
     const location =
       this.firstNonEmptyText($, [
@@ -1288,11 +1371,12 @@ export class CrawlBatdongsanService {
       : null;
 
     const categoryId = category?.id || 1;
+    const loc = await this.resolveLocationIds(data);
 
     const property = await this.prisma.property.create({
       data: {
         title: data.title,
-        description: data.description || null,
+        description: null,
         price: data.price ?? 0,
         area: data.area,
         bedroomNumber: data.bedroomNumber,
@@ -1308,6 +1392,9 @@ export class CrawlBatdongsanService {
         location: data.location,
         categoryId,
         createdById: this.systemUserId,
+        provinceId: loc.provinceId ?? null,
+        districtId: loc.districtId ?? null,
+        wardId: loc.wardId ?? null,
         status: "ACTIVE",
       },
       select: { id: true },
@@ -1489,6 +1576,287 @@ export class CrawlBatdongsanService {
       if (t) return t;
     }
     return null;
+  }
+
+  private firstNonEmptyHtml($: cheerio.CheerioAPI, selectors: string[]): string | null {
+    for (const sel of selectors) {
+      const node = $(sel).first();
+      if (!node.length) continue;
+
+      const rawHtml = (node.html() || "").trim();
+      const text = node.text().replace(/\s+/g, " ").trim();
+      if (!rawHtml || !text) continue;
+
+      const sanitized = this.sanitizeDescriptionHtml(rawHtml);
+      if (sanitized && this.htmlToText(sanitized)) return sanitized;
+    }
+
+    return null;
+  }
+
+  private sanitizeDescriptionHtml(rawHtml: string): string {
+    const allowedTags = new Set([
+      "a",
+      "b",
+      "blockquote",
+      "br",
+      "em",
+      "h2",
+      "h3",
+      "h4",
+      "i",
+      "li",
+      "ol",
+      "p",
+      "strong",
+      "u",
+      "ul",
+    ]);
+    const dangerousTags = new Set(["script", "style", "iframe", "object", "embed", "link", "meta", "noscript"]);
+    const fragment = cheerio.load(`<div data-crawl-description-root>${rawHtml}</div>`, undefined, false);
+    const root = fragment("[data-crawl-description-root]");
+
+    root.find("*").each((_, el) => {
+      const tagName = (el as any).tagName?.toLowerCase();
+      const node = fragment(el);
+
+      if (!tagName) return;
+
+      if (dangerousTags.has(tagName)) {
+        node.remove();
+        return;
+      }
+
+      if (!allowedTags.has(tagName)) {
+        node.replaceWith(node.contents());
+        return;
+      }
+
+      const href = tagName === "a" ? String((el as any).attribs?.href || "").trim() : "";
+
+      for (const attr of Object.keys((el as any).attribs || {})) {
+        node.removeAttr(attr);
+      }
+
+      if (tagName === "a") {
+        if (/^(https?:|mailto:|tel:|\/)/i.test(href)) {
+          node.attr("href", href);
+          node.attr("target", "_blank");
+          node.attr("rel", "noopener noreferrer");
+        }
+      }
+    });
+
+    return (root.html() || "")
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\s+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  private htmlToText(html: string): string {
+    return cheerio.load(html).text().replace(/\s+/g, " ").trim();
+  }
+
+  private async resolveLocationIds(data: CrawledProperty): Promise<LocationMatch> {
+    const primaryText = [data.location, data.title].filter(Boolean).join(" ");
+    return this.matchLocationText(primaryText);
+  }
+
+  private async matchLocationText(input: string): Promise<LocationMatch> {
+    const cache = await this.getLocationCache();
+    const text = this.normalizeLocationText(input);
+    if (!text) return {};
+
+    let province = this.findBestLocationCandidate(text, cache.provinces, "province");
+    const districtPool = province ? province.districts : cache.districts;
+    let district = this.findBestLocationCandidate(text, districtPool, "district");
+    const wardPool = district ? district.wards : province ? province.districts.flatMap((d) => d.wards) : cache.wards;
+    const ward = this.findBestLocationCandidate(text, wardPool, "ward");
+
+    if (ward && !district) {
+      district = ward.district;
+    }
+
+    if (district && !province) {
+      province = district.province;
+    }
+
+    return {
+      provinceId: province?.id,
+      districtId: district?.id,
+      wardId: ward?.id,
+    };
+  }
+
+  private async getLocationCache(): Promise<LocationCache> {
+    if (this.locationCache) return this.locationCache;
+
+    const provinces = await this.prisma.province.findMany({
+      select: {
+        id: true,
+        name: true,
+        districts: {
+          select: {
+            id: true,
+            name: true,
+            provinceId: true,
+            wards: {
+              select: {
+                id: true,
+                name: true,
+                districtId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const normalizedProvinces: LocationProvince[] = provinces.map((province) => {
+      const p: LocationProvince = {
+        id: province.id,
+        name: province.name,
+        districts: [],
+        norm: this.normalizeLocationText(province.name),
+        bare: this.normalizeLocationName(province.name, "province"),
+      };
+
+      p.districts = province.districts.map((district) => {
+        const d: LocationDistrict = {
+          id: district.id,
+          name: district.name,
+          provinceId: district.provinceId,
+          province: p,
+          wards: [],
+          norm: this.normalizeLocationText(district.name),
+          bare: this.normalizeLocationName(district.name, "district"),
+        };
+
+        d.wards = district.wards.map((ward) => ({
+          id: ward.id,
+          name: ward.name,
+          districtId: ward.districtId,
+          district: d,
+          norm: this.normalizeLocationText(ward.name),
+          bare: this.normalizeLocationName(ward.name, "ward"),
+        }));
+
+        return d;
+      });
+
+      return p;
+    });
+
+    this.locationCache = {
+      provinces: normalizedProvinces,
+      districts: normalizedProvinces.flatMap((p) => p.districts),
+      wards: normalizedProvinces.flatMap((p) => p.districts).flatMap((d) => d.wards),
+    };
+
+    return this.locationCache;
+  }
+
+  private findBestLocationCandidate<T extends { name: string; norm: string; bare: string }>(
+    text: string,
+    candidates: T[],
+    level: "province" | "district" | "ward",
+  ): T | undefined {
+    let best: { item: T; score: number } | undefined;
+
+    for (const item of candidates) {
+      const variants = this.locationNameVariants(item, level);
+      for (const variant of variants) {
+        const index = this.indexOfLocationPhrase(text, variant.value);
+        if (index < 0) continue;
+
+        const score = index + variant.penalty - variant.value.length / 1000;
+        if (!best || score < best.score) {
+          best = { item, score };
+        }
+      }
+    }
+
+    return best?.item;
+  }
+
+  private locationNameVariants(
+    item: { name: string; norm: string; bare: string },
+    level: "province" | "district" | "ward",
+  ): Array<{ value: string; penalty: number }> {
+    const variants = new Map<string, number>();
+    const add = (value: string, penalty: number) => {
+      const v = this.normalizeLocationText(value);
+      if (!v) return;
+      const existing = variants.get(v);
+      if (existing == null || penalty < existing) variants.set(v, penalty);
+    };
+
+    add(item.norm, 0);
+    add(item.bare, 12);
+
+    if (level === "ward") {
+      add(`phuong ${item.bare}`, 0);
+      add(`xa ${item.bare}`, 0);
+      add(`thi tran ${item.bare}`, 0);
+    } else if (level === "district") {
+      add(`quan ${item.bare}`, 0);
+      add(`huyen ${item.bare}`, 0);
+      add(`thi xa ${item.bare}`, 0);
+      add(`thanh pho ${item.bare}`, 0);
+    } else {
+      add(`tinh ${item.bare}`, 0);
+      add(`thanh pho ${item.bare}`, 0);
+      if (item.bare === "ho chi minh") {
+        add("hcm", 0);
+        add("tp hcm", 0);
+        add("tphcm", 0);
+        add("sai gon", 4);
+      }
+    }
+
+    return Array.from(variants, ([value, penalty]) => ({ value, penalty }));
+  }
+
+  private indexOfLocationPhrase(text: string, phrase: string): number {
+    const p = this.normalizeLocationText(phrase);
+    if (!p) return -1;
+    return ` ${text} `.indexOf(` ${p} `);
+  }
+
+  private normalizeLocationName(name: string, level: "province" | "district" | "ward"): string {
+    const prefixes =
+      level === "ward"
+        ? ["phuong", "xa", "thi tran"]
+        : level === "district"
+          ? ["quan", "huyen", "thi xa", "thanh pho", "tp"]
+          : ["tinh", "thanh pho", "tp"];
+
+    let out = this.normalizeLocationText(name);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const prefix of prefixes) {
+        if (out === prefix) continue;
+        if (out.startsWith(`${prefix} `)) {
+          out = out.slice(prefix.length + 1).trim();
+          changed = true;
+        }
+      }
+    }
+    return out;
+  }
+
+  private normalizeLocationText(value?: string | null): string {
+    return (value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "d")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   // ---------------------------

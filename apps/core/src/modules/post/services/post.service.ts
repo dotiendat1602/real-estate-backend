@@ -3,7 +3,7 @@ import { PrismaService } from "libs/modules/prisma/prisma.service";
 import { GetAllPostsDto } from "../dto/get-all-post.dto";
 import { CreatePostDto, UpdatePostDto } from "../dto/create-post.dto";
 import { assignPaging, returnPaging } from "libs/utils/helpers";
-import { PostStatus, Prisma, RoleType, User } from "@prisma/client";
+import { PostStatus, Prisma, RoleType, Status, User } from "@prisma/client";
 import { ApiException } from "libs/utils/exception";
 import { ItemMessage } from "libs/utils/enum";
 import { ContextProvider } from "libs/utils/providers/context.provider";
@@ -333,10 +333,37 @@ export class PostService {
     return { [key]: order } as Prisma.PostOrderByWithRelationInput;
   }
 
+  private ensurePublicSort(orderKey?: string, sortOrder?: 'asc' | 'desc') {
+    const order = sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : 'desc';
+
+    if (orderKey === 'price' || orderKey === 'area') {
+      return { property: { [orderKey]: order } } as Prisma.PostOrderByWithRelationInput;
+    }
+
+    return this.ensureSort(orderKey, sortOrder);
+  }
+
+  private buildDecimalRange(from?: number, to?: number) {
+    const hasFrom = from !== undefined && from !== null;
+    const hasTo = to !== undefined && to !== null;
+    if (!hasFrom && !hasTo) return undefined;
+
+    let min = hasFrom ? from : undefined;
+    let max = hasTo ? to : undefined;
+    if (min !== undefined && max !== undefined && min > max) {
+      [min, max] = [max, min];
+    }
+
+    return {
+      ...(min !== undefined ? { gte: min } : {}),
+      ...(max !== undefined ? { lte: max } : {}),
+    };
+  }
+
   async getAllPublicPosts(query: GetAllPostsDto) {
     const pagingParams = assignPaging(query);
 
-    const orderBy = this.ensureSort(pagingParams.sortKey, pagingParams.sortOrder);
+    const orderBy = this.ensurePublicSort(pagingParams.sortKey, pagingParams.sortOrder);
 
     const where: Prisma.PostWhereInput = {
       deletedAt: null,
@@ -344,14 +371,77 @@ export class PostService {
       approvedAt: { not: null },
     }
 
+    const propertyWhere: Prisma.PropertyWhereInput = {
+      deletedAt: null,
+      status: Status.ACTIVE,
+    };
+    const propertyAnd: Prisma.PropertyWhereInput[] = [];
+
     if (pagingParams.search) {
       const q = pagingParams.search.trim();
-      Object.assign(where, {
-        postTitle: { contains: q, mode: 'insensitive' },
-      });
+      where.OR = [
+        { postTitle: { contains: q, mode: 'insensitive' } },
+        { postContent: { contains: q, mode: 'insensitive' } },
+        { property: { title: { contains: q, mode: 'insensitive' } } },
+        { property: { location: { contains: q, mode: 'insensitive' } } },
+        { property: { province: { name: { contains: q, mode: 'insensitive' } } } },
+        { property: { district: { name: { contains: q, mode: 'insensitive' } } } },
+        { property: { ward: { name: { contains: q, mode: 'insensitive' } } } },
+      ];
     }
 
     if (pagingParams.type) Object.assign(where, { postType: pagingParams.type });
+
+    const priceRange = this.buildDecimalRange(pagingParams.priceFrom, pagingParams.priceTo);
+    if (priceRange) propertyWhere.price = priceRange;
+
+    const areaRange = this.buildDecimalRange(pagingParams.areaFrom, pagingParams.areaTo);
+    if (areaRange) propertyWhere.area = areaRange;
+
+    if (pagingParams.bedroomNumber !== undefined) {
+      propertyWhere.bedroomNumber = { gte: pagingParams.bedroomNumber };
+    }
+
+    if (pagingParams.toiletNumber !== undefined) {
+      propertyWhere.toiletNumber = { gte: pagingParams.toiletNumber };
+    }
+
+    if (pagingParams.categoryId) propertyWhere.categoryId = pagingParams.categoryId;
+    if (pagingParams.provinceId) propertyWhere.provinceId = pagingParams.provinceId;
+    if (pagingParams.districtId) propertyWhere.districtId = pagingParams.districtId;
+    if (pagingParams.wardId) propertyWhere.wardId = pagingParams.wardId;
+
+    if (pagingParams.amenityIds?.length) {
+      propertyAnd.push(
+        ...pagingParams.amenityIds.map((amenityId: number) => ({
+          propertyAmenities: {
+            some: {
+              amenityId,
+              deletedAt: null,
+              amenity: { deletedAt: null },
+            },
+          },
+        })),
+      );
+    }
+
+    if (pagingParams.utilityIds?.length) {
+      propertyAnd.push(
+        ...pagingParams.utilityIds.map((utilityId: number) => ({
+          propertyUtilities: {
+            some: {
+              utilityId,
+              deletedAt: null,
+              utility: { deletedAt: null },
+            },
+          },
+        })),
+      );
+    }
+
+    if (propertyAnd.length) propertyWhere.AND = propertyAnd;
+
+    where.property = { is: propertyWhere };
 
     const [posts, total] = await Promise.all([
       this.prismaService.post.findMany({
@@ -370,6 +460,34 @@ export class PostService {
               id: true,
               title: true,
               price: true,
+              area: true,
+              bedroomNumber: true,
+              toiletNumber: true,
+              location: true,
+              category: {
+                select: {
+                  id: true,
+                  categoryName: true,
+                },
+              },
+              province: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              district: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              ward: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
               images: {
                 select: {
                   id: true,

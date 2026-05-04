@@ -16,7 +16,6 @@ export class PropertyUtilityController {
     private readonly propertyUtilityService: PropertyUtilityService,
   ) { }
 
-  @Auth()
   @Get()
   @HttpCode(HttpStatus.OK)
   async getAllPropertyUtilities(
