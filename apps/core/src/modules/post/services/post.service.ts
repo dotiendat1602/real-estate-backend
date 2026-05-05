@@ -11,6 +11,8 @@ import { RejectPostDto } from "../dto/reject-post.dto";
 import { ReportPostDto, UpdateReportDto } from "../dto/report-post.dto";
 import { CoreConfigService } from "../../config/core-config.service";
 import { GetAllReportDto } from "../dto/get-all-report.dto";
+import { PostIngestJobData, PostIngestQueueService } from "./post-ingest-queue.service";
+import { BatchApprovePostDto } from "../dto/batch-approve-post.dto";
 
 const SORT_WHITELIST: Record<string, keyof Prisma.PostOrderByWithRelationInput> = {
   postTitle: 'postTitle',
@@ -27,6 +29,7 @@ export class PostService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly configService: CoreConfigService,
+    private readonly postIngestQueueService: PostIngestQueueService,
   ) { }
 
   private async ingestPostToAI(postId: number) {
@@ -325,6 +328,40 @@ export class PostService {
       this.logger.error(`Error deleting post from AI: ${error}`);
       return;
     }
+  }
+
+  async executeQueuedPostIngest(data: PostIngestJobData) {
+    if (data.action === "delete") {
+      const result = await this.deletePostFromAI(data.postId);
+      return {
+        ok: true,
+        postId: data.postId,
+        action: data.action,
+        trigger: data.trigger,
+        result,
+      };
+    }
+
+    const result = await this.updatePostInAI(data.postId);
+    return {
+      ok: true,
+      postId: data.postId,
+      action: data.action,
+      trigger: data.trigger,
+      result,
+    };
+  }
+
+  private enqueuePostIngest(data: PostIngestJobData) {
+    this.postIngestQueueService.enqueue(data)
+      .then((queued) => {
+        this.logger.log(
+          `Post ingest job ${queued.alreadyQueued ? "already queued" : "queued"}: postId=${data.postId}, action=${data.action}, jobId=${queued.jobId}, status=${queued.status}`,
+        );
+      })
+      .catch((err) => {
+        this.logger.error(`Failed to queue post ingest job: postId=${data.postId}, action=${data.action}`, err?.stack || err);
+      });
   }
 
   private ensureSort(orderKey?: string, sortOrder?: 'asc' | 'desc') {
@@ -797,8 +834,11 @@ export class PostService {
 
     // Nếu post đã approved, update embeddings trong AI
     if (updatedPost.postStatus === PostStatus.APPROVED) {
-      this.updatePostInAI(postId).catch((err) => {
-        this.logger.error(`AI update failed for postId=${postId}`, err);
+      this.enqueuePostIngest({
+        postId,
+        action: "upsert",
+        trigger: "update",
+        requestedById: user.id,
       });
     }
 
@@ -869,8 +909,11 @@ export class PostService {
     }
 
     // Xóa embeddings trong AI
-    this.deletePostFromAI(postId).catch((err) => {
-      this.logger.error(`AI delete failed for postId=${postId}`, err);
+    this.enqueuePostIngest({
+      postId,
+      action: "delete",
+      trigger: "delete",
+      requestedById: user.id,
     });
 
     return deletedPost;
@@ -982,18 +1025,81 @@ export class PostService {
       );
     }
 
-    // Ingest to AI asynchronously
-    this.ingestPostToAI(postId)
-      .then((res) => {
-        if (res) {
-          this.logger.log(`AI ingest success for postId=${postId}, chunks=${res.ingestedChunks || 0}`);
-        }
-      })
-      .catch((err) => {
-        this.logger.error(`AI ingest failed for postId=${postId}`, err?.stack || err);
-      });
+    this.enqueuePostIngest({
+      postId,
+      action: "upsert",
+      trigger: "approve",
+      requestedById: user.id,
+    });
 
     return approvedPost;
+  }
+
+  async approvePosts(dto: BatchApprovePostDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new ApiException('UNAUTHORIZED USER', HttpStatus.UNAUTHORIZED);
+    }
+
+    const postIds = Array.from(new Set((dto.postIds || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
+    if (!postIds.length) {
+      throw new ApiException('postIds is required', HttpStatus.BAD_REQUEST);
+    }
+
+    const existingPosts = await this.prismaService.post.findMany({
+      where: {
+        id: { in: postIds },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const approvedIds = existingPosts.map((post) => post.id);
+    const approvedIdSet = new Set(approvedIds);
+    const missingIds = postIds.filter((id) => !approvedIdSet.has(id));
+
+    if (!approvedIds.length) {
+      throw new ApiException(`${ItemMessage.NOT_FOUND}: Post`, HttpStatus.NOT_FOUND);
+    }
+
+    const now = new Date();
+    await this.prismaService.$transaction(async (prisma) => {
+      await prisma.post.updateMany({
+        where: { id: { in: approvedIds } },
+        data: {
+          approvedById: user.id,
+          approvedAt: now,
+          rejectedById: null,
+          rejectReason: null,
+          postStatus: PostStatus.APPROVED,
+        },
+      });
+
+      await prisma.auditLog.createMany({
+        data: approvedIds.map((postId) => ({
+          userId: user.id,
+          action: 'APPROVE_POST',
+          entity: 'Post',
+          entityId: postId,
+        })),
+      });
+    });
+
+    for (const postId of approvedIds) {
+      this.enqueuePostIngest({
+        postId,
+        action: "upsert",
+        trigger: "approve",
+        requestedById: user.id,
+      });
+    }
+
+    return {
+      approvedIds,
+      missingIds,
+      approvedCount: approvedIds.length,
+      requestedCount: postIds.length,
+      queuedIngestJobs: approvedIds.length,
+    };
   }
 
   async rejectPost(postId: number, dto: RejectPostDto) {
@@ -1048,8 +1154,11 @@ export class PostService {
     }
 
     // Xóa embeddings khi reject
-    this.deletePostFromAI(postId).catch((err) => {
-      this.logger.error(`AI delete failed for postId=${postId}`, err);
+    this.enqueuePostIngest({
+      postId,
+      action: "delete",
+      trigger: "reject",
+      requestedById: user.id,
     });
 
     return rejected;
@@ -1102,8 +1211,11 @@ export class PostService {
     }
 
     // Xóa embeddings khi archive
-    this.deletePostFromAI(postId).catch((err) => {
-      this.logger.error(`AI delete failed for postId=${postId}`, err);
+    this.enqueuePostIngest({
+      postId,
+      action: "delete",
+      trigger: "archive",
+      requestedById: user.id,
     });
 
     return archived;
