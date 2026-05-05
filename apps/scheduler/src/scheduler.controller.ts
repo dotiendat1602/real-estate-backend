@@ -18,6 +18,8 @@ export class SchedulerController {
     await this.schedulerService.runCrawlManually({
       cities: body.cities as any,
       modes: body.modes as any,
+      maxPagesPerCategory: body.maxPagesPerCategory,
+      maxDetails: body.maxDetails,
     });
     return { message: 'Crawl job started' };
   }

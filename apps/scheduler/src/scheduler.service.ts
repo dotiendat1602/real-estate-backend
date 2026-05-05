@@ -26,7 +26,12 @@ export class SchedulerService {
   }
 
   // Có thể test bằng cách chạy manual
-  async runCrawlManually(query?: { cities?: CityKey[]; modes?: ModeKey[] }) {
+  async runCrawlManually(query?: {
+    cities?: CityKey[];
+    modes?: ModeKey[];
+    maxPagesPerCategory?: number;
+    maxDetails?: number;
+  }) {
     return this.crawlBatdongsanService.crawlProperties(query);
   }
 }

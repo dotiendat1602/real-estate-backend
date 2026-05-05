@@ -91,11 +91,21 @@ export class PropertyUtilityService {
   async getAllPropertyUtilities(query: GetAllPropertyUtilitiesDto) {
     const pagingParams = assignPaging(query);
 
+    const sortWhitelist: Record<string, keyof Prisma.UtilityOrderByWithRelationInput> = {
+      id: 'id',
+      utilityName: 'utilityName',
+      utilityCategory: 'utilityCategory',
+      location: 'location',
+    };
+    const sortKey = sortWhitelist[pagingParams.sortKey] ?? sortWhitelist[pagingParams.sortBy] ?? 'utilityName';
+
     const orderObject = {
-      [pagingParams.sortBy || 'utility_name']: pagingParams.sortOrder || 'asc',
+      [sortKey]: pagingParams.sortOrder || 'asc',
     }
 
-    const where: Prisma.UtilityWhereInput = {};
+    const where: Prisma.UtilityWhereInput = {
+      deletedAt: null,
+    };
 
     if (query.utilityName) {
       const q = query.utilityName.trim();
@@ -115,7 +125,7 @@ export class PropertyUtilityService {
       where,
       orderBy: orderObject,
       skip: pagingParams.skip,
-      take: pagingParams.take,
+      take: pagingParams.pageSize,
     });
 
     const total = await this.prismaService.utility.count({ where });

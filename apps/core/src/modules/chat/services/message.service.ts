@@ -370,12 +370,13 @@ export class MessageService {
     const aiRequest: AIChatRequest = {
       userId: user.id,
       message: body.message.trim(),
-      topK: body.topK || 12,
+      topK: body.topK ?? 16,
       sessionId: user.aiChatSessionId ?? undefined,
       planningContexts,
     };
 
     let conversationWithBot;
+    let userMessageId: number | null = null;
 
     try {
       // Tìm hoặc tạo conversation AI bot cho user
@@ -415,6 +416,7 @@ export class MessageService {
           },
         },
       });
+      userMessageId = userMessage.id;
 
       const aiResponse: AIChatResponse = await this.aiClientService.chat(aiRequest);
 
@@ -550,6 +552,49 @@ export class MessageService {
         `Failed to get AI response for user ${user.id}: ${error.message}`,
         error.stack,
       );
+
+      if (conversationWithBot && userMessageId) {
+        const fallbackAnswer =
+          'Xin lỗi, hệ thống AI đang phản hồi chậm nên tôi chưa thể phân tích đầy đủ câu hỏi này. ' +
+          'Tôi đã lưu lại câu hỏi của bạn trong cuộc trò chuyện. Bạn vui lòng thử gửi lại sau ít phút; ' +
+          'nếu đây là câu hỏi về quy hoạch, hãy kiểm tra thêm phần dẫn chứng/hồ sơ quy hoạch trên trang chi tiết trước khi ra quyết định.';
+
+        const botMessage = await this.prismaService.chatBotMessage.create({
+          data: {
+            chatbotConversationId: conversationWithBot.id,
+            senderType: 'CHATBOT',
+            content: fallbackAnswer,
+            metadata: {
+              citations: [],
+              citationCount: 0,
+              fallback: true,
+              fallbackReason: 'AI_SERVICE_UNAVAILABLE',
+              originalError: error?.message || 'AI service unavailable',
+            } as Prisma.InputJsonValue,
+          },
+        });
+
+        await this.prismaService.chatBotConversation.update({
+          where: { id: conversationWithBot.id },
+          data: { lastMessageAt: new Date() },
+        });
+
+        return {
+          conversationId: conversationWithBot.id,
+          userMessageId,
+          botMessageId: botMessage.id,
+          answer: fallbackAnswer,
+          citations: [],
+          metadata: {
+            userId: user.id,
+            timestamp: botMessage.createdAt.toISOString(),
+            topK: aiRequest.topK,
+            fallback: true,
+            fallbackReason: 'AI_SERVICE_UNAVAILABLE',
+          },
+        };
+      }
+
       throw error;
     }
   }
@@ -596,7 +641,7 @@ export class MessageService {
         where,
         skip: pagingMessages.skip,
         take: pagingMessages.take,
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
       }),
       this.prismaService.chatBotMessage.count({
         where,

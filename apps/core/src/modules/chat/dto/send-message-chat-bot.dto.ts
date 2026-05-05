@@ -13,14 +13,14 @@ export class SendMessageChatBotDto {
 
   @ApiPropertyOptional({
     description: 'Số lượng kết quả tìm kiếm (1-50)',
-    example: 12,
-    default: 12,
+    example: 16,
+    default: 16,
   })
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(50)
-  topK?: number = 12;
+  topK?: number = 16;
 
   @ApiPropertyOptional({
     description: "Property ID ưu tiên để chatbot phân tích quy hoạch",

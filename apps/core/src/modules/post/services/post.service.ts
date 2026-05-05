@@ -3,7 +3,7 @@ import { PrismaService } from "libs/modules/prisma/prisma.service";
 import { GetAllPostsDto } from "../dto/get-all-post.dto";
 import { CreatePostDto, UpdatePostDto } from "../dto/create-post.dto";
 import { assignPaging, returnPaging } from "libs/utils/helpers";
-import { PostStatus, Prisma, RoleType, User } from "@prisma/client";
+import { PostStatus, Prisma, RoleType, Status, User } from "@prisma/client";
 import { ApiException } from "libs/utils/exception";
 import { ItemMessage } from "libs/utils/enum";
 import { ContextProvider } from "libs/utils/providers/context.provider";
@@ -11,6 +11,8 @@ import { RejectPostDto } from "../dto/reject-post.dto";
 import { ReportPostDto, UpdateReportDto } from "../dto/report-post.dto";
 import { CoreConfigService } from "../../config/core-config.service";
 import { GetAllReportDto } from "../dto/get-all-report.dto";
+import { PostIngestJobData, PostIngestQueueService } from "./post-ingest-queue.service";
+import { BatchApprovePostDto } from "../dto/batch-approve-post.dto";
 
 const SORT_WHITELIST: Record<string, keyof Prisma.PostOrderByWithRelationInput> = {
   postTitle: 'postTitle',
@@ -27,6 +29,7 @@ export class PostService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly configService: CoreConfigService,
+    private readonly postIngestQueueService: PostIngestQueueService,
   ) { }
 
   private async ingestPostToAI(postId: number) {
@@ -327,16 +330,77 @@ export class PostService {
     }
   }
 
+  async executeQueuedPostIngest(data: PostIngestJobData) {
+    if (data.action === "delete") {
+      const result = await this.deletePostFromAI(data.postId);
+      return {
+        ok: true,
+        postId: data.postId,
+        action: data.action,
+        trigger: data.trigger,
+        result,
+      };
+    }
+
+    const result = await this.updatePostInAI(data.postId);
+    return {
+      ok: true,
+      postId: data.postId,
+      action: data.action,
+      trigger: data.trigger,
+      result,
+    };
+  }
+
+  private enqueuePostIngest(data: PostIngestJobData) {
+    this.postIngestQueueService.enqueue(data)
+      .then((queued) => {
+        this.logger.log(
+          `Post ingest job ${queued.alreadyQueued ? "already queued" : "queued"}: postId=${data.postId}, action=${data.action}, jobId=${queued.jobId}, status=${queued.status}`,
+        );
+      })
+      .catch((err) => {
+        this.logger.error(`Failed to queue post ingest job: postId=${data.postId}, action=${data.action}`, err?.stack || err);
+      });
+  }
+
   private ensureSort(orderKey?: string, sortOrder?: 'asc' | 'desc') {
     const key = orderKey && SORT_WHITELIST[orderKey] ? SORT_WHITELIST[orderKey] : 'createdAt';
     const order = sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : 'desc';
     return { [key]: order } as Prisma.PostOrderByWithRelationInput;
   }
 
+  private ensurePublicSort(orderKey?: string, sortOrder?: 'asc' | 'desc') {
+    const order = sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : 'desc';
+
+    if (orderKey === 'price' || orderKey === 'area') {
+      return { property: { [orderKey]: order } } as Prisma.PostOrderByWithRelationInput;
+    }
+
+    return this.ensureSort(orderKey, sortOrder);
+  }
+
+  private buildDecimalRange(from?: number, to?: number) {
+    const hasFrom = from !== undefined && from !== null;
+    const hasTo = to !== undefined && to !== null;
+    if (!hasFrom && !hasTo) return undefined;
+
+    let min = hasFrom ? from : undefined;
+    let max = hasTo ? to : undefined;
+    if (min !== undefined && max !== undefined && min > max) {
+      [min, max] = [max, min];
+    }
+
+    return {
+      ...(min !== undefined ? { gte: min } : {}),
+      ...(max !== undefined ? { lte: max } : {}),
+    };
+  }
+
   async getAllPublicPosts(query: GetAllPostsDto) {
     const pagingParams = assignPaging(query);
 
-    const orderBy = this.ensureSort(pagingParams.sortKey, pagingParams.sortOrder);
+    const orderBy = this.ensurePublicSort(pagingParams.sortKey, pagingParams.sortOrder);
 
     const where: Prisma.PostWhereInput = {
       deletedAt: null,
@@ -344,14 +408,77 @@ export class PostService {
       approvedAt: { not: null },
     }
 
+    const propertyWhere: Prisma.PropertyWhereInput = {
+      deletedAt: null,
+      status: Status.ACTIVE,
+    };
+    const propertyAnd: Prisma.PropertyWhereInput[] = [];
+
     if (pagingParams.search) {
       const q = pagingParams.search.trim();
-      Object.assign(where, {
-        postTitle: { contains: q, mode: 'insensitive' },
-      });
+      where.OR = [
+        { postTitle: { contains: q, mode: 'insensitive' } },
+        { postContent: { contains: q, mode: 'insensitive' } },
+        { property: { title: { contains: q, mode: 'insensitive' } } },
+        { property: { location: { contains: q, mode: 'insensitive' } } },
+        { property: { province: { name: { contains: q, mode: 'insensitive' } } } },
+        { property: { district: { name: { contains: q, mode: 'insensitive' } } } },
+        { property: { ward: { name: { contains: q, mode: 'insensitive' } } } },
+      ];
     }
 
     if (pagingParams.type) Object.assign(where, { postType: pagingParams.type });
+
+    const priceRange = this.buildDecimalRange(pagingParams.priceFrom, pagingParams.priceTo);
+    if (priceRange) propertyWhere.price = priceRange;
+
+    const areaRange = this.buildDecimalRange(pagingParams.areaFrom, pagingParams.areaTo);
+    if (areaRange) propertyWhere.area = areaRange;
+
+    if (pagingParams.bedroomNumber !== undefined) {
+      propertyWhere.bedroomNumber = { gte: pagingParams.bedroomNumber };
+    }
+
+    if (pagingParams.toiletNumber !== undefined) {
+      propertyWhere.toiletNumber = { gte: pagingParams.toiletNumber };
+    }
+
+    if (pagingParams.categoryId) propertyWhere.categoryId = pagingParams.categoryId;
+    if (pagingParams.provinceId) propertyWhere.provinceId = pagingParams.provinceId;
+    if (pagingParams.districtId) propertyWhere.districtId = pagingParams.districtId;
+    if (pagingParams.wardId) propertyWhere.wardId = pagingParams.wardId;
+
+    if (pagingParams.amenityIds?.length) {
+      propertyAnd.push(
+        ...pagingParams.amenityIds.map((amenityId: number) => ({
+          propertyAmenities: {
+            some: {
+              amenityId,
+              deletedAt: null,
+              amenity: { deletedAt: null },
+            },
+          },
+        })),
+      );
+    }
+
+    if (pagingParams.utilityIds?.length) {
+      propertyAnd.push(
+        ...pagingParams.utilityIds.map((utilityId: number) => ({
+          propertyUtilities: {
+            some: {
+              utilityId,
+              deletedAt: null,
+              utility: { deletedAt: null },
+            },
+          },
+        })),
+      );
+    }
+
+    if (propertyAnd.length) propertyWhere.AND = propertyAnd;
+
+    where.property = { is: propertyWhere };
 
     const [posts, total] = await Promise.all([
       this.prismaService.post.findMany({
@@ -370,6 +497,34 @@ export class PostService {
               id: true,
               title: true,
               price: true,
+              area: true,
+              bedroomNumber: true,
+              toiletNumber: true,
+              location: true,
+              category: {
+                select: {
+                  id: true,
+                  categoryName: true,
+                },
+              },
+              province: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              district: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              ward: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
               images: {
                 select: {
                   id: true,
@@ -679,8 +834,11 @@ export class PostService {
 
     // Nếu post đã approved, update embeddings trong AI
     if (updatedPost.postStatus === PostStatus.APPROVED) {
-      this.updatePostInAI(postId).catch((err) => {
-        this.logger.error(`AI update failed for postId=${postId}`, err);
+      this.enqueuePostIngest({
+        postId,
+        action: "upsert",
+        trigger: "update",
+        requestedById: user.id,
       });
     }
 
@@ -751,8 +909,11 @@ export class PostService {
     }
 
     // Xóa embeddings trong AI
-    this.deletePostFromAI(postId).catch((err) => {
-      this.logger.error(`AI delete failed for postId=${postId}`, err);
+    this.enqueuePostIngest({
+      postId,
+      action: "delete",
+      trigger: "delete",
+      requestedById: user.id,
     });
 
     return deletedPost;
@@ -864,18 +1025,81 @@ export class PostService {
       );
     }
 
-    // Ingest to AI asynchronously
-    this.ingestPostToAI(postId)
-      .then((res) => {
-        if (res) {
-          this.logger.log(`AI ingest success for postId=${postId}, chunks=${res.ingestedChunks || 0}`);
-        }
-      })
-      .catch((err) => {
-        this.logger.error(`AI ingest failed for postId=${postId}`, err?.stack || err);
-      });
+    this.enqueuePostIngest({
+      postId,
+      action: "upsert",
+      trigger: "approve",
+      requestedById: user.id,
+    });
 
     return approvedPost;
+  }
+
+  async approvePosts(dto: BatchApprovePostDto) {
+    const user = ContextProvider.getAuthUser<User>();
+    if (!user) {
+      throw new ApiException('UNAUTHORIZED USER', HttpStatus.UNAUTHORIZED);
+    }
+
+    const postIds = Array.from(new Set((dto.postIds || []).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)));
+    if (!postIds.length) {
+      throw new ApiException('postIds is required', HttpStatus.BAD_REQUEST);
+    }
+
+    const existingPosts = await this.prismaService.post.findMany({
+      where: {
+        id: { in: postIds },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const approvedIds = existingPosts.map((post) => post.id);
+    const approvedIdSet = new Set(approvedIds);
+    const missingIds = postIds.filter((id) => !approvedIdSet.has(id));
+
+    if (!approvedIds.length) {
+      throw new ApiException(`${ItemMessage.NOT_FOUND}: Post`, HttpStatus.NOT_FOUND);
+    }
+
+    const now = new Date();
+    await this.prismaService.$transaction(async (prisma) => {
+      await prisma.post.updateMany({
+        where: { id: { in: approvedIds } },
+        data: {
+          approvedById: user.id,
+          approvedAt: now,
+          rejectedById: null,
+          rejectReason: null,
+          postStatus: PostStatus.APPROVED,
+        },
+      });
+
+      await prisma.auditLog.createMany({
+        data: approvedIds.map((postId) => ({
+          userId: user.id,
+          action: 'APPROVE_POST',
+          entity: 'Post',
+          entityId: postId,
+        })),
+      });
+    });
+
+    for (const postId of approvedIds) {
+      this.enqueuePostIngest({
+        postId,
+        action: "upsert",
+        trigger: "approve",
+        requestedById: user.id,
+      });
+    }
+
+    return {
+      approvedIds,
+      missingIds,
+      approvedCount: approvedIds.length,
+      requestedCount: postIds.length,
+      queuedIngestJobs: approvedIds.length,
+    };
   }
 
   async rejectPost(postId: number, dto: RejectPostDto) {
@@ -930,8 +1154,11 @@ export class PostService {
     }
 
     // Xóa embeddings khi reject
-    this.deletePostFromAI(postId).catch((err) => {
-      this.logger.error(`AI delete failed for postId=${postId}`, err);
+    this.enqueuePostIngest({
+      postId,
+      action: "delete",
+      trigger: "reject",
+      requestedById: user.id,
     });
 
     return rejected;
@@ -984,8 +1211,11 @@ export class PostService {
     }
 
     // Xóa embeddings khi archive
-    this.deletePostFromAI(postId).catch((err) => {
-      this.logger.error(`AI delete failed for postId=${postId}`, err);
+    this.enqueuePostIngest({
+      postId,
+      action: "delete",
+      trigger: "archive",
+      requestedById: user.id,
     });
 
     return archived;

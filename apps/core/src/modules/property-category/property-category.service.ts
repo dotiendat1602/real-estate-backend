@@ -29,8 +29,17 @@ export class PropertyCategoryService {
   async getAllPropertyCategory(dto: GetAllPropertyCategoryDto) {
     const pagingParams = assignPaging(dto);
 
+    const sortWhitelist: Record<string, keyof Prisma.PropertyCategoryOrderByWithRelationInput> = {
+      id: 'id',
+      categoryName: 'categoryName',
+      categoryDescription: 'categoryDescription',
+      createdAt: 'createdAt',
+      updatedAt: 'updatedAt',
+    };
+    const sortKey = sortWhitelist[pagingParams.sortKey] ?? 'categoryName';
+
     const orderObject = {
-      [pagingParams.sortKey || 'category_name']: pagingParams.sortOrder || 'asc',
+      [sortKey]: pagingParams.sortOrder || 'asc',
     };
 
     const where: Prisma.PropertyCategoryWhereInput = {

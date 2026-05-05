@@ -23,7 +23,6 @@ export class PropertyCategoryController {
     return this.propertyCategoryService.getPropertyCategoryMetaData();
   }
 
-  @Auth()
   @Get()
   @HttpCode(HttpStatus.OK)
   async getAllPropertyCategory(

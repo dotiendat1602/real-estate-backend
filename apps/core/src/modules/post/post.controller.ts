@@ -9,6 +9,7 @@ import { SystemPermissionType } from "@prisma/client";
 import { ReportPostDto, UpdateReportDto } from "./dto/report-post.dto";
 import { FavoriteService } from "./services/favorite.service";
 import { GetAllReportDto } from "./dto/get-all-report.dto";
+import { BatchApprovePostDto } from "./dto/batch-approve-post.dto";
 
 @CoreControllers({
   path: 'post',
@@ -150,6 +151,16 @@ export class PostController {
     @Param('postId', ParseIntPipe) postId: number,
   ) {
     return await this.postService.restorePost(postId);
+  }
+
+  // Endpoint: POST /api/core/v1/post/approve/:postId
+  @Auth([SystemPermissionType.MANAGE_POST])
+  @Post('approve/batch')
+  @HttpCode(HttpStatus.OK)
+  async approvePosts(
+    @Body() dto: BatchApprovePostDto,
+  ) {
+    return await this.postService.approvePosts(dto);
   }
 
   // Endpoint: POST /api/core/v1/post/approve/:postId
