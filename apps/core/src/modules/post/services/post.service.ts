@@ -428,6 +428,7 @@ export class PostService {
     }
 
     if (pagingParams.type) Object.assign(where, { postType: pagingParams.type });
+    if (pagingParams.agentId) where.createdById = pagingParams.agentId;
 
     const priceRange = this.buildDecimalRange(pagingParams.priceFrom, pagingParams.priceTo);
     if (priceRange) propertyWhere.price = priceRange;
@@ -583,6 +584,10 @@ export class PostService {
             },
             propertyUtilities: {
               select: {
+                distanceM: true,
+                travelTimeS: true,
+                isPrimary: true,
+                note: true,
                 utility: true,
               }
             }
@@ -613,7 +618,7 @@ export class PostService {
     return existPost;
   }
 
-  async getAllPosts(query: GetAllPostsDto) {
+  async getAllPosts(query: GetAllPostsDto, options?: { onlyCreatedByUser?: boolean }) {
     const user = ContextProvider.getAuthUser<User>();
     if (!user) {
       throw new ApiException(
@@ -634,19 +639,37 @@ export class PostService {
       deletedAt: null,
     }
 
-    if (role?.name == RoleType.AGENT) {
+    if (options?.onlyCreatedByUser || role?.name == RoleType.AGENT) {
       where.createdById = user.id;
     }
 
     if (pagingParams.search) {
       const q = pagingParams.search.trim();
-      Object.assign(where, {
-        postTitle: { contains: q, mode: 'insensitive' },
-      });
+      where.OR = [
+        { postTitle: { contains: q, mode: 'insensitive' } },
+        { postContent: { contains: q, mode: 'insensitive' } },
+        { property: { title: { contains: q, mode: 'insensitive' } } },
+        { property: { location: { contains: q, mode: 'insensitive' } } },
+        { property: { province: { name: { contains: q, mode: 'insensitive' } } } },
+        { property: { district: { name: { contains: q, mode: 'insensitive' } } } },
+        { property: { ward: { name: { contains: q, mode: 'insensitive' } } } },
+      ];
     }
 
     if (pagingParams.type) Object.assign(where, { postType: pagingParams.type });
     if (pagingParams.status) Object.assign(where, { postStatus: pagingParams.status });
+
+    const propertyWhere: Prisma.PropertyWhereInput = {
+      deletedAt: null,
+    };
+
+    if (pagingParams.provinceId) propertyWhere.provinceId = pagingParams.provinceId;
+    if (pagingParams.districtId) propertyWhere.districtId = pagingParams.districtId;
+    if (pagingParams.wardId) propertyWhere.wardId = pagingParams.wardId;
+
+    if (pagingParams.provinceId || pagingParams.districtId || pagingParams.wardId) {
+      where.property = { is: propertyWhere };
+    }
 
     const posts = await this.prismaService.post.findMany({
       where,
@@ -664,6 +687,28 @@ export class PostService {
             id: true,
             title: true,
             price: true,
+            location: true,
+            area: true,
+            bedroomNumber: true,
+            toiletNumber: true,
+            province: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            district: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            ward: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
             images: {
               select: {
                 id: true,
@@ -684,6 +729,10 @@ export class PostService {
     const total = await this.prismaService.post.count({ where });
 
     return returnPaging(posts, total, pagingParams);
+  }
+
+  async getMyPosts(query: GetAllPostsDto) {
+    return this.getAllPosts(query, { onlyCreatedByUser: true });
   }
 
   async getOnePost(postId: number) {

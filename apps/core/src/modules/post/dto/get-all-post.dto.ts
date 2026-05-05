@@ -124,6 +124,13 @@ export class GetAllPostsDto extends DefaultPaginationDto {
   @Min(1)
   wardId?: number
 
+  @ApiPropertyOptional({ description: "Created by agent id", example: 1 })
+  @IsOptional()
+  @Transform(toOptionalInt, { toClassOnly: true })
+  @IsInt()
+  @Min(1)
+  agentId?: number
+
   @ApiPropertyOptional({ description: "Amenity ids, comma-separated or repeated", example: "1,2,3" })
   @IsOptional()
   @Transform(toIntArray, { toClassOnly: true })

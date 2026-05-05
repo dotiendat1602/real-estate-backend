@@ -110,7 +110,13 @@ export class LoggerService {
         );
   }
 
-  warn({ message, context, obj = {} }: MessageType): void {
+  warn(input: MessageType | string, context?: string): void {
+    const { message, context: messageContext, obj = {} } =
+      typeof input === 'string'
+        ? { message: input, context, obj: {} }
+        : input;
+
+    context = messageContext;
     Object.assign(obj, { context });
     this.isProduction
       ? this.pino.logger.warn([obj, message].find(Boolean), message)

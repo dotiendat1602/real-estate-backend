@@ -9,8 +9,9 @@ import path from "path";
 import fs from "fs";
 import fsp from "fs/promises";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import { UtilityCategory } from "@prisma/client";
 
-import { CityKey, CrawledProperty, CrawlSeed, ModeKey } from "../libs/types/crawl-batdongsan.type";
+import { CityKey, CrawlDetailResult, CrawledProperty, CrawlRunReport, CrawlSeed, LaunchProxyConfig, LocationCache, LocationDistrict, LocationMatch, LocationProvince, ModeKey, NearbyPoi, NearbyUtilitiesBackfillStatus, OverpassResponse, SeedAntiBotMetrics, SeedCircuitState, WebshareProxy, WebshareProxyListResponse } from "../libs/types/crawl-batdongsan.type";
 import {
   dmsToDecimal,
   mapFurnitureStatus,
@@ -25,124 +26,10 @@ import {
   mapOrientation,
   normalizeKey,
 } from "../libs/helpers";
+import { NEARBY_POI_PER_CATEGORY_LIMIT, NEARBY_POI_RADIUS_M, OVERPASS_API_URL, WEBSHARE_DEFAULT_HOST } from "../libs/constant";
 
 chromium.use(StealthPlugin());
 
-const WEBSHARE_DEFAULT_HOST = "proxy.webshare.io";
-
-type WebshareProxy = {
-  id: string;
-  username: string;
-  password: string;
-  proxy_address: string | null;
-  port: number;
-  valid: boolean;
-};
-
-type WebshareProxyListResponse = {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: WebshareProxy[];
-};
-
-type LaunchProxyConfig = {
-  server: string;
-  username?: string;
-  password?: string;
-};
-
-type LocationWard = {
-  id: number;
-  name: string;
-  districtId: number;
-  district?: LocationDistrict;
-  norm: string;
-  bare: string;
-};
-
-type LocationDistrict = {
-  id: number;
-  name: string;
-  provinceId: number;
-  province?: LocationProvince;
-  wards: LocationWard[];
-  norm: string;
-  bare: string;
-};
-
-type LocationProvince = {
-  id: number;
-  name: string;
-  districts: LocationDistrict[];
-  norm: string;
-  bare: string;
-};
-
-type LocationCache = {
-  provinces: LocationProvince[];
-  districts: LocationDistrict[];
-  wards: LocationWard[];
-};
-
-type LocationMatch = {
-  provinceId?: number;
-  districtId?: number;
-  wardId?: number;
-};
-
-type SeedAntiBotMetrics = {
-  challengeHits: number;
-  navigationAttempts: number;
-  challengeRatio: number;
-  proxyRotated: boolean;
-};
-
-type SeedCircuitState = {
-  consecutiveTrips: number;
-  cooldownUntil: number;
-  openedCount: number;
-  lastReason?: string;
-};
-
-type CrawlDetailStatus = "inserted" | "skipped" | "failed";
-
-type CrawlDetailResult = {
-  status: CrawlDetailStatus;
-  url: string;
-  sourceUid?: string;
-  title?: string;
-  reason?: string;
-  crawledAt: string;
-};
-
-type CrawlRunReport = {
-  startedAt: string;
-  finishedAt?: string;
-  reportVersion: string;
-  filters: {
-    cities: CityKey[];
-    modes: ModeKey[];
-  };
-  summary: {
-    visited: number;
-    inserted: number;
-    skipped: number;
-    failed: number;
-    seedsCircuitSkipped: number;
-    challengeDetected: number;
-    challengeRatio: number;
-    proxyRotations: number;
-    tookMs: number;
-  };
-  insertedItems: CrawlDetailResult[];
-  skippedItems: CrawlDetailResult[];
-  failedItems: CrawlDetailResult[];
-  files: {
-    json?: string;
-    jsonl?: string;
-  };
-};
 
 @Injectable()
 export class CrawlBatdongsanService {
@@ -178,6 +65,12 @@ export class CrawlBatdongsanService {
   private webshareProxyLastFetch = 0;
   private readonly webshareProxyCacheTtlMs = 5 * 60 * 1000;
   private runtimeProxyDisabled = false;
+  private overpassQueue: Promise<void> = Promise.resolve();
+  private lastOverpassRequestAt = 0;
+  private nearbyUtilitiesBackfillRunning = false;
+  private nearbyUtilitiesBackfillStatus: NearbyUtilitiesBackfillStatus = {
+    running: false,
+  };
 
   private readonly userAgents = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
@@ -1424,6 +1317,411 @@ export class CrawlBatdongsanService {
         skipDuplicates: true,
       });
     }
+
+    await this.syncNearbyUtilitiesForProperty(property.id, data, loc);
+  }
+
+  async backfillNearbyUtilities(opts?: { limit?: number }) {
+    const limit = Math.min(Math.max(Math.trunc(Number(opts?.limit) || 100), 1), 1000);
+    const properties = await this.prisma.property.findMany({
+      where: {
+        deletedAt: null,
+        lat: { not: null },
+        lon: { not: null },
+        propertyUtilities: {
+          none: { deletedAt: null },
+        },
+      },
+      take: limit,
+      orderBy: { id: "desc" },
+      select: {
+        id: true,
+        title: true,
+        lat: true,
+        lon: true,
+        location: true,
+        provinceId: true,
+        districtId: true,
+        wardId: true,
+      },
+    });
+
+    let processed = 0;
+    let linkedUtilities = 0;
+    let failed = 0;
+
+    this.updateNearbyBackfillProgress(properties.length, processed, linkedUtilities, failed);
+
+    for (const property of properties) {
+      try {
+        const count = await this.syncNearbyUtilitiesForProperty(
+          property.id,
+          {
+            title: property.title,
+            lat: property.lat === null ? undefined : Number(property.lat),
+            lon: property.lon === null ? undefined : Number(property.lon),
+            location: property.location ?? undefined,
+          },
+          {
+            provinceId: property.provinceId ?? undefined,
+            districtId: property.districtId ?? undefined,
+            wardId: property.wardId ?? undefined,
+          },
+        );
+        processed += 1;
+        linkedUtilities += count;
+      } catch (error: any) {
+        failed += 1;
+        this.logger.error(`[NearbyPOI] backfill failed propertyId=${property.id}: ${error?.message || error}`);
+      }
+
+      this.updateNearbyBackfillProgress(properties.length, processed, linkedUtilities, failed);
+    }
+
+    return {
+      scanned: properties.length,
+      processed,
+      linkedUtilities,
+      failed,
+    };
+  }
+
+  startNearbyUtilitiesBackfill(opts?: { limit?: number }) {
+    if (this.nearbyUtilitiesBackfillRunning) {
+      return {
+        started: false,
+        running: true,
+        message: "Nearby utilities backfill is already running",
+        status: this.nearbyUtilitiesBackfillStatus,
+      };
+    }
+
+    this.nearbyUtilitiesBackfillRunning = true;
+    const startedAt = Date.now();
+    const limit = Math.min(Math.max(Math.trunc(Number(opts?.limit) || 100), 1), 1000);
+    this.nearbyUtilitiesBackfillStatus = {
+      running: true,
+      startedAt: new Date(startedAt).toISOString(),
+      limit,
+    };
+
+    void this.backfillNearbyUtilities({ limit })
+      .then((result) => {
+        this.nearbyUtilitiesBackfillStatus = {
+          running: false,
+          startedAt: this.nearbyUtilitiesBackfillStatus.startedAt,
+          finishedAt: new Date().toISOString(),
+          limit,
+          result,
+        };
+        this.logger.log(
+          `[NearbyPOI] backfill completed limit=${limit} scanned=${result.scanned} processed=${result.processed} linked=${result.linkedUtilities} failed=${result.failed} tookMs=${Date.now() - startedAt}`,
+        );
+      })
+      .catch((error: any) => {
+        this.nearbyUtilitiesBackfillStatus = {
+          running: false,
+          startedAt: this.nearbyUtilitiesBackfillStatus.startedAt,
+          finishedAt: new Date().toISOString(),
+          limit,
+          error: error?.message || String(error),
+        };
+        this.logger.error(`[NearbyPOI] backfill crashed: ${error?.message || error}`);
+      })
+      .finally(() => {
+        this.nearbyUtilitiesBackfillRunning = false;
+      });
+
+    return {
+      started: true,
+      running: true,
+      limit,
+      message: "Nearby utilities backfill started",
+    };
+  }
+
+  getNearbyUtilitiesBackfillStatus() {
+    return this.nearbyUtilitiesBackfillStatus;
+  }
+
+  private updateNearbyBackfillProgress(
+    scanned: number,
+    processed: number,
+    linkedUtilities: number,
+    failed: number,
+  ) {
+    if (!this.nearbyUtilitiesBackfillStatus.running) return;
+    this.nearbyUtilitiesBackfillStatus = {
+      ...this.nearbyUtilitiesBackfillStatus,
+      result: {
+        scanned,
+        processed,
+        linkedUtilities,
+        failed,
+      },
+    };
+  }
+
+  private isNearbyPoiEnabled(): boolean {
+    return (process.env.BATDONGSAN_NEARBY_POI_ENABLED || "true").toLowerCase() !== "false";
+  }
+
+  private getNearbyPoiRadiusM(): number {
+    return NEARBY_POI_RADIUS_M;
+  }
+
+  private getNearbyPoiPerCategoryLimit(): number {
+    return NEARBY_POI_PER_CATEGORY_LIMIT;
+  }
+
+  private getOverpassEndpoint(): string {
+    return OVERPASS_API_URL;
+  }
+
+  private getOverpassTimeoutMs(): number {
+    const raw = Number(process.env.OVERPASS_TIMEOUT_MS || "12000");
+    if (!Number.isFinite(raw) || raw <= 0) return 12000;
+    return Math.min(Math.max(Math.trunc(raw), 3000), 60000);
+  }
+
+  private getOverpassMinIntervalMs(): number {
+    const raw = Number(process.env.OVERPASS_MIN_INTERVAL_MS || "1200");
+    if (!Number.isFinite(raw) || raw < 0) return 1200;
+    return Math.min(Math.trunc(raw), 10000);
+  }
+
+  private async syncNearbyUtilitiesForProperty(
+    propertyId: number,
+    data: Pick<CrawledProperty, "title" | "lat" | "lon" | "location">,
+    loc?: LocationMatch,
+  ): Promise<number> {
+    if (!this.isNearbyPoiEnabled()) return 0;
+    if (!Number.isFinite(data.lat) || !Number.isFinite(data.lon)) return 0;
+
+    const pois = await this.fetchNearbyPoisFromOverpass(Number(data.lat), Number(data.lon));
+    if (!pois.length) return 0;
+
+    let linked = 0;
+    for (const poi of pois) {
+      const utility = await this.findOrCreateUtility(poi, loc);
+      await this.prisma.propertyUtility.upsert({
+        where: {
+          propertyId_utilityId: {
+            propertyId,
+            utilityId: utility.id,
+          },
+        },
+        create: {
+          propertyId,
+          utilityId: utility.id,
+          distanceM: poi.distanceM,
+          travelTimeS: poi.travelTimeS,
+          isPrimary: false,
+          note: "OSM Overpass; distance is straight-line and travel time is estimated.",
+        },
+        update: {
+          distanceM: poi.distanceM,
+          travelTimeS: poi.travelTimeS,
+          deletedAt: null,
+          note: "OSM Overpass; distance is straight-line and travel time is estimated.",
+        },
+      });
+      linked += 1;
+    }
+
+    this.logger.log(`[NearbyPOI] propertyId=${propertyId} linked=${linked}`);
+    return linked;
+  }
+
+  private async findOrCreateUtility(poi: NearbyPoi, loc?: LocationMatch): Promise<{ id: number }> {
+    const existing = await this.prisma.utility.findFirst({
+      where: {
+        deletedAt: null,
+        utilityCategory: poi.category,
+        utilityName: poi.name,
+        lat: { gte: poi.lat - 0.00002, lte: poi.lat + 0.00002 },
+        lon: { gte: poi.lon - 0.00002, lte: poi.lon + 0.00002 },
+      },
+      select: { id: true },
+    });
+
+    if (existing) return existing;
+
+    return this.prisma.utility.create({
+      data: {
+        utilityCategory: poi.category,
+        utilityName: poi.name,
+        lat: poi.lat,
+        lon: poi.lon,
+        location: poi.location,
+        provinceId: loc?.provinceId ?? null,
+        districtId: loc?.districtId ?? null,
+        wardId: loc?.wardId ?? null,
+      },
+      select: { id: true },
+    });
+  }
+
+  private async fetchNearbyPoisFromOverpass(lat: number, lon: number): Promise<NearbyPoi[]> {
+    const radius = this.getNearbyPoiRadiusM();
+    const query = this.buildOverpassNearbyQuery(lat, lon, radius);
+    const endpoint = this.getOverpassEndpoint();
+    const timeoutMs = this.getOverpassTimeoutMs();
+
+    try {
+      const response = await this.enqueueOverpassRequest(async () => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          return await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+              "User-Agent": "real-estate-scheduler/1.0 contact=local-dev",
+            },
+            body: new URLSearchParams({ data: query }).toString(),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`[NearbyPOI] Overpass failed status=${response.status} body=${(await response.text()).slice(0, 180)}`);
+        return [];
+      }
+
+      const json = (await response.json()) as OverpassResponse;
+      return this.normalizeOverpassPois(json, lat, lon);
+    } catch (error: any) {
+      this.logger.warn(`[NearbyPOI] Overpass request failed: ${error?.message || error}`);
+      return [];
+    }
+  }
+
+  private async enqueueOverpassRequest<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.overpassQueue.then(async () => {
+      const waitMs = Math.max(0, this.getOverpassMinIntervalMs() - (Date.now() - this.lastOverpassRequestAt));
+      if (waitMs > 0) await this.sleep(waitMs);
+      this.lastOverpassRequestAt = Date.now();
+      return fn();
+    });
+
+    this.overpassQueue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  private buildOverpassNearbyQuery(lat: number, lon: number, radius: number): string {
+    return `
+      [out:json][timeout:25];
+      (
+        nwr["amenity"~"school|kindergarten|university|college|hospital|clinic|doctors|dentist|pharmacy|restaurant|cafe|fast_food|food_court|marketplace"](around:${radius},${lat},${lon});
+        nwr["shop"~"supermarket|convenience|mall|department_store"](around:${radius},${lat},${lon});
+        nwr["leisure"~"park|garden|playground"](around:${radius},${lat},${lon});
+        nwr["landuse"="recreation_ground"](around:${radius},${lat},${lon});
+      );
+      out center tags 120;
+    `.trim();
+  }
+
+  private normalizeOverpassPois(response: OverpassResponse, propertyLat: number, propertyLon: number): NearbyPoi[] {
+    const perCategoryLimit = this.getNearbyPoiPerCategoryLimit();
+    const seen = new Set<string>();
+    const items: NearbyPoi[] = [];
+
+    for (const element of response.elements ?? []) {
+      const tags = element.tags ?? {};
+      const category = this.mapOverpassCategory(tags);
+      if (!category) continue;
+
+      const lat = element.lat ?? element.center?.lat;
+      const lon = element.lon ?? element.center?.lon;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+
+      const name = this.getOverpassPoiName(tags);
+      if (!name) continue;
+
+      const key = `${category}|${name.toLowerCase()}|${Number(lat).toFixed(5)}|${Number(lon).toFixed(5)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const distanceM = Math.round(this.haversineDistanceM(propertyLat, propertyLon, Number(lat), Number(lon)));
+      items.push({
+        overpassId: `${element.type}/${element.id}`,
+        name,
+        category,
+        lat: Number(lat),
+        lon: Number(lon),
+        location: this.formatOverpassAddress(tags),
+        distanceM,
+        travelTimeS: this.estimateCityTravelTimeS(distanceM),
+      });
+    }
+
+    const buckets = new Map<UtilityCategory, NearbyPoi[]>();
+    for (const item of items) {
+      const bucket = buckets.get(item.category) ?? [];
+      bucket.push(item);
+      buckets.set(item.category, bucket);
+    }
+
+    return Array.from(buckets.values()).flatMap((bucket) =>
+      bucket.sort((a, b) => a.distanceM - b.distanceM).slice(0, perCategoryLimit),
+    );
+  }
+
+  private mapOverpassCategory(tags: Record<string, string>): UtilityCategory | null {
+    const amenity = tags.amenity;
+    const shop = tags.shop;
+    const leisure = tags.leisure;
+    const landuse = tags.landuse;
+
+    if (["school", "kindergarten", "university", "college"].includes(amenity)) return UtilityCategory.EDUCATION;
+    if (["hospital", "clinic", "doctors", "dentist", "pharmacy"].includes(amenity)) return UtilityCategory.HEALTHCARE;
+    if (["restaurant", "cafe", "fast_food", "food_court"].includes(amenity)) return UtilityCategory.DINING;
+    if (amenity === "marketplace" || ["supermarket", "convenience", "mall", "department_store"].includes(shop)) {
+      return UtilityCategory.COMMERCIAL_SHOPPING;
+    }
+    if (["park", "garden", "playground"].includes(leisure) || landuse === "recreation_ground") {
+      return UtilityCategory.PARK_PLAZA;
+    }
+
+    return null;
+  }
+
+  private getOverpassPoiName(tags: Record<string, string>): string | null {
+    const raw = tags["name:vi"] || tags.name || tags.brand || tags.operator;
+    const name = (raw || "").replace(/\s+/g, " ").trim();
+    return name.length >= 2 ? name.slice(0, 180) : null;
+  }
+
+  private formatOverpassAddress(tags: Record<string, string>): string | null {
+    const house = tags["addr:housenumber"];
+    const street = tags["addr:street"];
+    const ward = tags["addr:ward"] || tags["addr:suburb"];
+    const district = tags["addr:district"];
+    const city = tags["addr:city"] || tags["addr:province"];
+    const fallback = tags["addr:full"];
+    const parts = [house, street, ward, district, city].filter((part) => !!part && String(part).trim());
+    const text = parts.length ? parts.join(", ") : fallback;
+    return text ? text.replace(/\s+/g, " ").trim().slice(0, 255) : null;
+  }
+
+  private haversineDistanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const earthRadiusM = 6371000;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return earthRadiusM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  private estimateCityTravelTimeS(distanceM: number): number {
+    const metersPerSecond = 30000 / 3600;
+    return Math.max(0, Math.round(distanceM / metersPerSecond));
   }
 
   // ---------------------------
@@ -1793,7 +2091,10 @@ export class CrawlBatdongsanService {
     };
 
     add(item.norm, 0);
-    add(item.bare, 12);
+    const bareIsNumeric = /^\d+[a-z]?$/.test(item.bare);
+    if (!bareIsNumeric) {
+      add(item.bare, 12);
+    }
 
     if (level === "ward") {
       add(`phuong ${item.bare}`, 0);
