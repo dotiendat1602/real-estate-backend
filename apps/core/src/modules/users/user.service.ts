@@ -400,23 +400,48 @@ export class UserService {
             mode: "insensitive"
           }
         },
+        {
+          agentProfile: {
+            areas: {
+              has: q,
+            },
+          },
+        },
+        {
+          agentProfile: {
+            tags: {
+              has: q,
+            },
+          },
+        },
       ]
     }
 
+    const agentProfileFilters: Prisma.AgentProfileWhereInput[] = [];
+
     if (paging.area) {
-      where.agentProfile = {
+      agentProfileFilters.push({
         areas: {
-          hasSome: [paging.area.trim()],
-        }
-      }
+          has: paging.area.trim(),
+        },
+      });
     }
 
     if (paging.tag) {
-      where.agentProfile = {
+      agentProfileFilters.push({
         tags: {
-          hasSome: [paging.tag.trim()],
-        }
-      }
+          has: paging.tag.trim(),
+        },
+      });
+    }
+
+    if (agentProfileFilters.length === 1) {
+      where.agentProfile = agentProfileFilters[0];
+    } else if (agentProfileFilters.length > 1) {
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
+        ...agentProfileFilters.map((agentProfile) => ({ agentProfile })),
+      ];
     }
 
     const [agents, total] = await Promise.all([

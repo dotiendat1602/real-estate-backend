@@ -34,4 +34,12 @@ export class SchedulerService {
   }) {
     return this.crawlBatdongsanService.crawlProperties(query);
   }
+
+  async backfillBatdongsanNearbyUtilities(query?: { limit?: number }) {
+    return this.crawlBatdongsanService.startNearbyUtilitiesBackfill(query);
+  }
+
+  getBatdongsanNearbyUtilitiesBackfillStatus() {
+    return this.crawlBatdongsanService.getNearbyUtilitiesBackfillStatus();
+  }
 }

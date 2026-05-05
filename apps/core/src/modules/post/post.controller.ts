@@ -92,6 +92,16 @@ export class PostController {
     return await this.favoriteService.addOrRemoveFavorites(postId);
   }
 
+  // Endpoint: GET /api/core/v1/post/my
+  @Auth()
+  @Get('my')
+  @HttpCode(HttpStatus.OK)
+  async getMyPosts(
+    @Query() query: GetAllPostsDto,
+  ) {
+    return await this.postService.getMyPosts(query);
+  }
+
   // Endpoint: GET /api/core/v1/post
   @Auth([SystemPermissionType.MANAGE_POST])
   @Get()
