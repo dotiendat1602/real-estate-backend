@@ -182,16 +182,46 @@ export type NearbyPoi = {
   travelTimeS: number;
 };
 
+export type NearbyPoiFetchStatus =
+  | "ok"
+  | "no_poi"
+  | "invalid_coordinates"
+  | "rate_limited"
+  | "server_timeout"
+  | "request_failed"
+  | "disabled";
+
+export type NearbyPoiFetchResult = {
+  status: NearbyPoiFetchStatus;
+  pois: NearbyPoi[];
+  httpStatus?: number;
+  message?: string;
+};
+
+export type NearbyPoiSyncResult = {
+  status: NearbyPoiFetchStatus;
+  linked: number;
+  httpStatus?: number;
+  message?: string;
+};
+
+export type NearbyUtilitiesBackfillResult = {
+  scanned: number;
+  processed: number;
+  linkedUtilities: number;
+  failed: number;
+  invalidCoordinates: number;
+  noPoiFound: number;
+  poiRequestFailed: number;
+  rateLimited: number;
+  serverTimeout: number;
+};
+
 export type NearbyUtilitiesBackfillStatus = {
   running: boolean;
   startedAt?: string;
   finishedAt?: string;
   limit?: number;
-  result?: {
-    scanned: number;
-    processed: number;
-    linkedUtilities: number;
-    failed: number;
-  };
+  result?: NearbyUtilitiesBackfillResult;
   error?: string;
 };
