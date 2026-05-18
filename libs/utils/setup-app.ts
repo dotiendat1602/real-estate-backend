@@ -25,7 +25,16 @@ export const setupApp = async (
 ) => {
   app.enableCors({ origin: '*' });
   app.enable('trust proxy'); // only if you're behind a reverse proxy (Heroku, Bluemix, AWS ELB, Nginx, etc)
-  app.use(helmet());
+  app.use(
+    helmet({
+      hsts: false,
+      contentSecurityPolicy: {
+        directives: {
+          upgradeInsecureRequests: null,
+        },
+      },
+    }),
+  );
   app.use(compression());
 
   const loggerService = app.get(LoggerService);

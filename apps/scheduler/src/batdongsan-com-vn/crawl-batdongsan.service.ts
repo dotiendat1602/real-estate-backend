@@ -11,7 +11,7 @@ import fsp from "fs/promises";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { UtilityCategory } from "@prisma/client";
 
-import { CityKey, CrawlDetailResult, CrawledProperty, CrawlRunReport, CrawlSeed, LaunchProxyConfig, LocationCache, LocationDistrict, LocationMatch, LocationProvince, ModeKey, NearbyPoi, NearbyUtilitiesBackfillStatus, OverpassResponse, SeedAntiBotMetrics, SeedCircuitState, WebshareProxy, WebshareProxyListResponse } from "../libs/types/crawl-batdongsan.type";
+import { CityKey, CrawlDetailResult, CrawledProperty, CrawlRunReport, CrawlSeed, LaunchProxyConfig, LocationCache, LocationDistrict, LocationMatch, LocationProvince, ModeKey, NearbyPoi, NearbyPoiFetchResult, NearbyPoiSyncResult, NearbyUtilitiesBackfillResult, NearbyUtilitiesBackfillStatus, OverpassResponse, SeedAntiBotMetrics, SeedCircuitState, WebshareProxy, WebshareProxyListResponse } from "../libs/types/crawl-batdongsan.type";
 import {
   dmsToDecimal,
   mapFurnitureStatus,
@@ -26,7 +26,7 @@ import {
   mapOrientation,
   normalizeKey,
 } from "../libs/helpers";
-import { NEARBY_POI_PER_CATEGORY_LIMIT, NEARBY_POI_RADIUS_M, OVERPASS_API_URL, WEBSHARE_DEFAULT_HOST } from "../libs/constant";
+import { NEARBY_POI_PER_CATEGORY_LIMIT, NEARBY_POI_RADIUS_M, OVERPASS_ABORT_COOLDOWN_MS, OVERPASS_API_URL, OVERPASS_RATE_LIMIT_COOLDOWN_MS, OVERPASS_SERVER_TIMEOUT_COOLDOWN_MS, WEBSHARE_DEFAULT_HOST } from "../libs/constant";
 
 chromium.use(StealthPlugin());
 
@@ -67,6 +67,7 @@ export class CrawlBatdongsanService {
   private runtimeProxyDisabled = false;
   private overpassQueue: Promise<void> = Promise.resolve();
   private lastOverpassRequestAt = 0;
+  private overpassCooldownUntil = 0;
   private nearbyUtilitiesBackfillRunning = false;
   private nearbyUtilitiesBackfillStatus: NearbyUtilitiesBackfillStatus = {
     running: false,
@@ -1346,15 +1347,23 @@ export class CrawlBatdongsanService {
       },
     });
 
-    let processed = 0;
-    let linkedUtilities = 0;
-    let failed = 0;
+    const result: NearbyUtilitiesBackfillResult = {
+      scanned: properties.length,
+      processed: 0,
+      linkedUtilities: 0,
+      failed: 0,
+      invalidCoordinates: 0,
+      noPoiFound: 0,
+      poiRequestFailed: 0,
+      rateLimited: 0,
+      serverTimeout: 0,
+    };
 
-    this.updateNearbyBackfillProgress(properties.length, processed, linkedUtilities, failed);
+    this.updateNearbyBackfillProgress(result);
 
     for (const property of properties) {
       try {
-        const count = await this.syncNearbyUtilitiesForProperty(
+        const syncResult = await this.syncNearbyUtilitiesForProperty(
           property.id,
           {
             title: property.title,
@@ -1368,22 +1377,18 @@ export class CrawlBatdongsanService {
             wardId: property.wardId ?? undefined,
           },
         );
-        processed += 1;
-        linkedUtilities += count;
+        result.processed += 1;
+        result.linkedUtilities += syncResult.linked;
+        this.applyNearbyBackfillSyncStatus(result, syncResult);
       } catch (error: any) {
-        failed += 1;
+        result.failed += 1;
         this.logger.error(`[NearbyPOI] backfill failed propertyId=${property.id}: ${error?.message || error}`);
       }
 
-      this.updateNearbyBackfillProgress(properties.length, processed, linkedUtilities, failed);
+      this.updateNearbyBackfillProgress(result);
     }
 
-    return {
-      scanned: properties.length,
-      processed,
-      linkedUtilities,
-      failed,
-    };
+    return result;
   }
 
   startNearbyUtilitiesBackfill(opts?: { limit?: number }) {
@@ -1445,21 +1450,40 @@ export class CrawlBatdongsanService {
   }
 
   private updateNearbyBackfillProgress(
-    scanned: number,
-    processed: number,
-    linkedUtilities: number,
-    failed: number,
+    result: NearbyUtilitiesBackfillResult,
   ) {
     if (!this.nearbyUtilitiesBackfillStatus.running) return;
     this.nearbyUtilitiesBackfillStatus = {
       ...this.nearbyUtilitiesBackfillStatus,
-      result: {
-        scanned,
-        processed,
-        linkedUtilities,
-        failed,
-      },
+      result: { ...result },
     };
+  }
+
+  private applyNearbyBackfillSyncStatus(
+    result: NearbyUtilitiesBackfillResult,
+    syncResult: NearbyPoiSyncResult,
+  ) {
+    switch (syncResult.status) {
+      case "invalid_coordinates":
+        result.invalidCoordinates += 1;
+        break;
+      case "no_poi":
+        result.noPoiFound += 1;
+        break;
+      case "rate_limited":
+        result.rateLimited += 1;
+        result.poiRequestFailed += 1;
+        break;
+      case "server_timeout":
+        result.serverTimeout += 1;
+        result.poiRequestFailed += 1;
+        break;
+      case "request_failed":
+        result.poiRequestFailed += 1;
+        break;
+      default:
+        break;
+    }
   }
 
   private isNearbyPoiEnabled(): boolean {
@@ -1494,15 +1518,28 @@ export class CrawlBatdongsanService {
     propertyId: number,
     data: Pick<CrawledProperty, "title" | "lat" | "lon" | "location">,
     loc?: LocationMatch,
-  ): Promise<number> {
-    if (!this.isNearbyPoiEnabled()) return 0;
-    if (!Number.isFinite(data.lat) || !Number.isFinite(data.lon)) return 0;
+  ): Promise<NearbyPoiSyncResult> {
+    if (!this.isNearbyPoiEnabled()) return { status: "disabled", linked: 0 };
 
-    const pois = await this.fetchNearbyPoisFromOverpass(Number(data.lat), Number(data.lon));
-    if (!pois.length) return 0;
+    const lat = Number(data.lat);
+    const lon = Number(data.lon);
+    if (!this.isValidVietnamCoordinate(lat, lon)) {
+      this.logger.warn(`[NearbyPOI] invalid coordinates propertyId=${propertyId} lat=${data.lat} lon=${data.lon}`);
+      return { status: "invalid_coordinates", linked: 0 };
+    }
+
+    const fetchResult = await this.fetchNearbyPoisFromOverpass(lat, lon);
+    if (!fetchResult.pois.length) {
+      return {
+        status: fetchResult.status,
+        linked: 0,
+        httpStatus: fetchResult.httpStatus,
+        message: fetchResult.message,
+      };
+    }
 
     let linked = 0;
-    for (const poi of pois) {
+    for (const poi of fetchResult.pois) {
       const utility = await this.findOrCreateUtility(poi, loc);
       await this.prisma.propertyUtility.upsert({
         where: {
@@ -1530,7 +1567,13 @@ export class CrawlBatdongsanService {
     }
 
     this.logger.log(`[NearbyPOI] propertyId=${propertyId} linked=${linked}`);
-    return linked;
+    return { status: "ok", linked };
+  }
+
+  private isValidVietnamCoordinate(lat: number, lon: number): boolean {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+    if (lat === 0 && lon === 0) return false;
+    return lat >= 8 && lat <= 24 && lon >= 102 && lon <= 110;
   }
 
   private async findOrCreateUtility(poi: NearbyPoi, loc?: LocationMatch): Promise<{ id: number }> {
@@ -1562,7 +1605,7 @@ export class CrawlBatdongsanService {
     });
   }
 
-  private async fetchNearbyPoisFromOverpass(lat: number, lon: number): Promise<NearbyPoi[]> {
+  private async fetchNearbyPoisFromOverpass(lat: number, lon: number): Promise<NearbyPoiFetchResult> {
     const radius = this.getNearbyPoiRadiusM();
     const query = this.buildOverpassNearbyQuery(lat, lon, radius);
     const endpoint = this.getOverpassEndpoint();
@@ -1588,20 +1631,67 @@ export class CrawlBatdongsanService {
       });
 
       if (!response.ok) {
-        this.logger.warn(`[NearbyPOI] Overpass failed status=${response.status} body=${(await response.text()).slice(0, 180)}`);
-        return [];
+        const body = (await response.text()).slice(0, 180);
+        this.logger.warn(`[NearbyPOI] Overpass failed status=${response.status} body=${body}`);
+
+        if (response.status === 429) {
+          this.setOverpassCooldown("rate limit", OVERPASS_RATE_LIMIT_COOLDOWN_MS);
+          return {
+            status: "rate_limited",
+            pois: [],
+            httpStatus: response.status,
+            message: body,
+          };
+        }
+
+        if (response.status === 504) {
+          this.setOverpassCooldown("server timeout", OVERPASS_SERVER_TIMEOUT_COOLDOWN_MS);
+          return {
+            status: "server_timeout",
+            pois: [],
+            httpStatus: response.status,
+            message: body,
+          };
+        }
+
+        return {
+          status: "request_failed",
+          pois: [],
+          httpStatus: response.status,
+          message: body,
+        };
       }
 
       const json = (await response.json()) as OverpassResponse;
-      return this.normalizeOverpassPois(json, lat, lon);
+      const pois = this.normalizeOverpassPois(json, lat, lon);
+      return {
+        status: pois.length ? "ok" : "no_poi",
+        pois,
+      };
     } catch (error: any) {
       this.logger.warn(`[NearbyPOI] Overpass request failed: ${error?.message || error}`);
-      return [];
+      const message = error?.message || String(error);
+      if (this.isAbortError(error)) {
+        this.setOverpassCooldown("request abort", OVERPASS_ABORT_COOLDOWN_MS);
+        return {
+          status: "server_timeout",
+          pois: [],
+          message,
+        };
+      }
+
+      return {
+        status: "request_failed",
+        pois: [],
+        message,
+      };
     }
   }
 
   private async enqueueOverpassRequest<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.overpassQueue.then(async () => {
+      const cooldownWaitMs = Math.max(0, this.overpassCooldownUntil - Date.now());
+      if (cooldownWaitMs > 0) await this.sleep(cooldownWaitMs);
       const waitMs = Math.max(0, this.getOverpassMinIntervalMs() - (Date.now() - this.lastOverpassRequestAt));
       if (waitMs > 0) await this.sleep(waitMs);
       this.lastOverpassRequestAt = Date.now();
@@ -1610,6 +1700,18 @@ export class CrawlBatdongsanService {
 
     this.overpassQueue = run.then(() => undefined, () => undefined);
     return run;
+  }
+
+  private setOverpassCooldown(reason: string, durationMs: number) {
+    const until = Date.now() + durationMs;
+    if (until <= this.overpassCooldownUntil) return;
+    this.overpassCooldownUntil = until;
+    this.logger.warn(`[NearbyPOI] Overpass cooldown reason=${reason} durationMs=${durationMs}`);
+  }
+
+  private isAbortError(error: any): boolean {
+    const message = String(error?.message || error || "").toLowerCase();
+    return error?.name === "AbortError" || message.includes("aborted");
   }
 
   private buildOverpassNearbyQuery(lat: number, lon: number, radius: number): string {
