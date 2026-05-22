@@ -17,6 +17,9 @@ export class NewsTopicService {
 
   async getAll() {
     return this.prismaService.newsTopic.findMany({
+      where: {
+        deletedAt: null,
+      },
       include: {
         _count: {
           select: { articles: true },
@@ -28,7 +31,7 @@ export class NewsTopicService {
 
   async getOne(id: number) {
     const topic = await this.prismaService.newsTopic.findUnique({
-      where: { id },
+      where: { id, deletedAt: null },
       include: {
         _count: {
           select: { articles: true },
