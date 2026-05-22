@@ -245,4 +245,26 @@ export class NewsArticleService {
 
     return savedArticles;
   }
+
+  async subscribeNewsletter(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existing = await this.prismaService.newsletterSubscriber.findUnique({
+      where: { email: normalizedEmail },
+    });
+
+    if (existing) {
+      return {
+        message: "This email is already subscribed to the newsletter.",
+      };
+    }
+
+    await this.prismaService.newsletterSubscriber.create({
+      data: { email: normalizedEmail },
+    });
+
+    return {
+      message: "Newsletter subscription successful. We'll send weekly updates to your inbox.",
+    };
+  }
 }

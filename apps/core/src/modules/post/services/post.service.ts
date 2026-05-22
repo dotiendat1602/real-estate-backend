@@ -290,7 +290,7 @@ export class PostService {
       const response = await fetch(`${aiServiceUrl}/api/ingest/posts/${postId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postId, content, metadata })
+        body: JSON.stringify({ content, metadata })
       });
 
       if (!response.ok) {

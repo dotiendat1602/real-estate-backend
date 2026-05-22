@@ -9,6 +9,7 @@ import { UpdateTopicDto } from "./dto/topics/update-topic.dto";
 import { CreateArticleDto } from "./dto/articles/create-article.dto";
 import { GetAllArticleDto } from "./dto/articles/get-all-article.dto";
 import { UpdateArticleDto } from "./dto/articles/update-article.dto";
+import { NewsletterSubscribeDto } from "./dto/newsletter-subscribe.dto";
 
 @CoreControllers({
   path: "news",
@@ -119,5 +120,10 @@ export class NewsController {
   @Get("saved-articles")
   getAllSavedArticles() {
     return this.newsArticleService.getAllSavedArticles();
+  }
+
+  @Post("newsletter")
+  subscribeNewsletter(@Body() dto: NewsletterSubscribeDto) {
+    return this.newsArticleService.subscribeNewsletter(dto.email);
   }
 }
