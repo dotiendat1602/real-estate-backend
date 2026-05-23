@@ -32,6 +32,55 @@ export class PostService {
     private readonly postIngestQueueService: PostIngestQueueService,
   ) { }
 
+  private formatUtilityCategory(category?: string | null): string {
+    const labels: Record<string, string> = {
+      COMMERCIAL_SHOPPING: 'Thương mại/siêu thị',
+      HEALTHCARE: 'Y tế',
+      EDUCATION: 'Giáo dục',
+      TRANSPORT: 'Giao thông',
+      PARK_PLAZA: 'Công viên/quảng trường',
+      FINANCIAL: 'Tài chính',
+      GOVERNMENT: 'Cơ quan hành chính',
+      ENTERTAINMENT: 'Giải trí',
+      DINING: 'Ăn uống',
+      SPORTS: 'Thể thao',
+      RELIGIOUS: 'Tôn giáo',
+      FUEL: 'Nhiên liệu',
+      ACCOMMODATION: 'Lưu trú',
+      PARKING: 'Bãi đỗ xe',
+      OTHER: 'Khác',
+    };
+    return category ? labels[category] ?? category : 'Khác';
+  }
+
+  private formatUtilityLine(utility: {
+    name: string;
+    category?: string | null;
+    distanceM?: unknown;
+    travelTimeS?: number | null;
+    location?: string | null;
+    note?: string | null;
+    isPrimary?: boolean | null;
+  }): string {
+    const parts = [`${utility.name} (${this.formatUtilityCategory(utility.category)})`];
+    if (utility.distanceM !== null && utility.distanceM !== undefined) {
+      parts.push(`cách ${Number(utility.distanceM).toLocaleString('vi-VN')}m`);
+    }
+    if (utility.travelTimeS) {
+      parts.push(`khoảng ${Math.ceil(utility.travelTimeS / 60)} phút`);
+    }
+    if (utility.location) {
+      parts.push(utility.location);
+    }
+    if (utility.note) {
+      parts.push(utility.note);
+    }
+    if (utility.isPrimary) {
+      parts.push('tiện ích nổi bật');
+    }
+    return `• ${parts.join(' - ')}`;
+  }
+
   private async ingestPostToAI(postId: number) {
     try {
       const aiServiceUrl = this.configService.aiService.url || 'http://127.0.0.1:8001';
@@ -52,11 +101,14 @@ export class PostService {
                 select: {
                   distanceM: true,
                   travelTimeS: true,
-                  utility: { select: { utilityName: true } }
+                  isPrimary: true,
+                  note: true,
+                  utility: { select: { utilityName: true, utilityCategory: true, location: true } }
                 }
               }
             }
-          }
+          },
+          createdBy: { select: { name: true, email: true, phone: true } },
         }
       });
 
@@ -76,8 +128,12 @@ export class PostService {
       const utilitiesRaw = (post.property.propertyUtilities ?? [])
         .map((pu) => ({
           name: pu.utility?.utilityName ?? '',
+          category: pu.utility?.utilityCategory ?? null,
           distanceM: pu.distanceM ?? null,
           travelTimeS: pu.travelTimeS ?? null,
+          location: pu.utility?.location ?? null,
+          note: pu.note ?? null,
+          isPrimary: pu.isPrimary ?? false,
         }))
         .filter((u) => !!u.name);
 
@@ -89,9 +145,13 @@ export class PostService {
         }
       );
 
-      const utilitiesTop = utilitiesSorted.slice(0, 8);
+      const utilitiesForContext = utilitiesSorted.slice(0, 30);
+      const utilitiesTop = utilitiesSorted.slice(0, 12);
       const utilityTags: string[] = Array.from(
         new Set(utilitiesRaw.map((u) => u.name)),
+      );
+      const utilityCategories: string[] = Array.from(
+        new Set(utilitiesRaw.map((u) => u.category ? String(u.category) : null).filter((category): category is string => !!category)),
       );
 
       // Fix: Convert Decimal to number properly
@@ -126,13 +186,22 @@ export class PostService {
 
         ${amenities.length ? `--- TIỆN ÍCH NỘI KHU ---\n${amenities.map(a => `• ${a}`).join('\n')}` : ''}
 
-        ${utilitiesTop.length ? `--- TIỆN ÍCH XUNG QUANH ---\n${utilitiesTop.map(u => `• ${u.name}${u.distanceM ? ` (cách ${Number(u.distanceM)}m)` : ''}`).join('\n')}` : ''}
+        ${utilitiesForContext.length ? `--- TIỆN ÍCH XUNG QUANH ---\n${utilitiesForContext.map(u => this.formatUtilityLine(u)).join('\n')}` : ''}
+
+        --- LIÊN HỆ NGƯỜI ĐĂNG ---
+        Tên: ${post.createdBy?.name ?? 'N/A'}
+        Số điện thoại: ${post.createdBy?.phone ?? 'N/A'}
+        Email: ${post.createdBy?.email ?? 'N/A'}
       `.trim();
 
       const metadata = {
         postId: post.id,
         propertyId: post.property.id,
         postType: post.postType,
+        postStatus: post.postStatus,
+        title: post.postTitle,
+        postTitle: post.postTitle,
+        sourceUrl: `/posts/${post.id}`,
         city: post.property.province?.name ?? null,
         district: post.property.district?.name ?? null,
         ward: post.property.ward?.name ?? null,
@@ -142,11 +211,20 @@ export class PostService {
         categoryName: post.property.category?.categoryName ?? null,
         amenities,
         utilityTags,
+        utilityCategories,
         utilitiesTop: utilitiesTop.map(u => ({
           name: u.name,
+          category: u.category,
+          categoryLabel: this.formatUtilityCategory(u.category),
           distanceM: u.distanceM ? Number(u.distanceM) : null,
           travelTimeS: u.travelTimeS,
+          location: u.location,
+          note: u.note,
+          isPrimary: u.isPrimary,
         })),
+        ownerName: post.createdBy?.name ?? null,
+        ownerPhone: post.createdBy?.phone ?? null,
+        ownerEmail: post.createdBy?.email ?? null,
       };
 
       const response = await fetch(`${aiServiceUrl}/api/ingest/posts`, {
@@ -190,11 +268,14 @@ export class PostService {
                 select: {
                   distanceM: true,
                   travelTimeS: true,
-                  utility: { select: { utilityName: true } }
+                  isPrimary: true,
+                  note: true,
+                  utility: { select: { utilityName: true, utilityCategory: true, location: true } }
                 }
               }
             }
-          }
+          },
+          createdBy: { select: { name: true, email: true, phone: true } },
         }
       });
 
@@ -215,8 +296,12 @@ export class PostService {
       const utilitiesRaw = (post.property.propertyUtilities ?? [])
         .map((pu) => ({
           name: pu.utility?.utilityName ?? '',
+          category: pu.utility?.utilityCategory ?? null,
           distanceM: pu.distanceM ?? null,
           travelTimeS: pu.travelTimeS ?? null,
+          location: pu.utility?.location ?? null,
+          note: pu.note ?? null,
+          isPrimary: pu.isPrimary ?? false,
         }))
         .filter((u) => !!u.name);
 
@@ -228,9 +313,13 @@ export class PostService {
         }
       );
 
-      const utilitiesTop = utilitiesSorted.slice(0, 8);
+      const utilitiesForContext = utilitiesSorted.slice(0, 30);
+      const utilitiesTop = utilitiesSorted.slice(0, 12);
       const utilityTags: string[] = Array.from(
         new Set(utilitiesRaw.map((u) => u.name)),
+      );
+      const utilityCategories: string[] = Array.from(
+        new Set(utilitiesRaw.map((u) => u.category ? String(u.category) : null).filter((category): category is string => !!category)),
       );
 
       const priceValue = post.property.price ? Number(post.property.price) : 0;
@@ -264,13 +353,22 @@ export class PostService {
 
         ${amenities.length ? `--- TIỆN ÍCH NỘI KHU ---\n${amenities.map(a => `• ${a}`).join('\n')}` : ''}
 
-        ${utilitiesTop.length ? `--- TIỆN ÍCH XUNG QUANH ---\n${utilitiesTop.map(u => `• ${u.name}${u.distanceM ? ` (cách ${Number(u.distanceM)}m)` : ''}`).join('\n')}` : ''}
+        ${utilitiesForContext.length ? `--- TIỆN ÍCH XUNG QUANH ---\n${utilitiesForContext.map(u => this.formatUtilityLine(u)).join('\n')}` : ''}
+
+        --- LIÊN HỆ NGƯỜI ĐĂNG ---
+        Tên: ${post.createdBy?.name ?? 'N/A'}
+        Số điện thoại: ${post.createdBy?.phone ?? 'N/A'}
+        Email: ${post.createdBy?.email ?? 'N/A'}
       `.trim();
 
       const metadata = {
         postId: post.id,
         propertyId: post.property.id,
         postType: post.postType,
+        postStatus: post.postStatus,
+        title: post.postTitle,
+        postTitle: post.postTitle,
+        sourceUrl: `/posts/${post.id}`,
         city: post.property.province?.name ?? null,
         district: post.property.district?.name ?? null,
         ward: post.property.ward?.name ?? null,
@@ -280,11 +378,20 @@ export class PostService {
         categoryName: post.property.category?.categoryName ?? null,
         amenities,
         utilityTags,
+        utilityCategories,
         utilitiesTop: utilitiesTop.map(u => ({
           name: u.name,
+          category: u.category,
+          categoryLabel: this.formatUtilityCategory(u.category),
           distanceM: u.distanceM ? Number(u.distanceM) : null,
           travelTimeS: u.travelTimeS,
+          location: u.location,
+          note: u.note,
+          isPrimary: u.isPrimary,
         })),
+        ownerName: post.createdBy?.name ?? null,
+        ownerPhone: post.createdBy?.phone ?? null,
+        ownerEmail: post.createdBy?.email ?? null,
       };
 
       const response = await fetch(`${aiServiceUrl}/api/ingest/posts/${postId}`, {

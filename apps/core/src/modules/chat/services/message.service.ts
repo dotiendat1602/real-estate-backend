@@ -298,6 +298,7 @@ export class MessageService {
       userId: user.id,
       message: body.message.trim(),
       sessionId: user.aiChatSessionId ?? undefined,
+      postId: body.postId,
     };
 
     let conversationWithBot;
@@ -352,7 +353,7 @@ export class MessageService {
       // Enrich citations với thông tin post từ DB
       const postIds = aiResponse.citations
         .map(c => c.postId)
-        .filter(id => id != null);
+        .filter((id): id is number => typeof id === 'number');
 
       let enrichedCitations = aiResponse.citations;
 
@@ -400,24 +401,25 @@ export class MessageService {
         const postMap = new Map(posts.map(p => [p.id, p]));
 
         enrichedCitations = aiResponse.citations.map(citation => {
-          const post = postMap.get(citation.postId);
+          const post = citation.postId ? postMap.get(citation.postId) : null;
           if (post) {
+            const postProperty = (post as any).property;
             return {
               ...citation,
               postTitle: post.postTitle,
               postType: post.postType,
-              imageUrl: post.property?.images?.[0]?.imageUrl ?? null,
-              price: post.property?.price,
-              area: post.property?.area,
-              location: post.property?.location,
-              province: post.property?.province?.name,
-              district: post.property?.district?.name,
-              ward: post.property?.ward?.name,
-              bedrooms: post.property?.bedroomNumber,
+              imageUrl: postProperty?.images?.[0]?.imageUrl ?? null,
+              price: postProperty?.price,
+              area: postProperty?.area,
+              location: postProperty?.location,
+              province: postProperty?.province?.name,
+              district: postProperty?.district?.name,
+              ward: postProperty?.ward?.name,
+              bedrooms: postProperty?.bedroomNumber,
             };
           }
-          return citation;
-        });
+          return citation.postId ? null : citation;
+        }).filter((citation): citation is NonNullable<typeof citation> => citation !== null);
       }
 
       const citationsJson = toJsonValue(
