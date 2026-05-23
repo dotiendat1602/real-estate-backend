@@ -17,9 +17,8 @@ import { ContextProvider } from 'libs/utils/providers/context.provider';
 import { assignPaging, returnPaging } from 'libs/utils/helpers';
 import { GetAllMessagesOfConversationDto } from '../dto/get-all-messages-conversation.dto';
 import { SendMessageChatBotDto } from '../dto/send-message-chat-bot.dto';
-import { AIChatRequest, AIChatResponse, PlanningChatContext } from 'libs/utils/constant';
+import { AIChatRequest, AIChatResponse } from 'libs/utils/constant';
 import { AIClientService } from './ai-client.service';
-import { PlanningService } from '../../planning/planning.service';
 
 function toJsonValue<T>(value: T): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -34,76 +33,7 @@ export class MessageService {
     private readonly socketGateway: SocketGateway,
     private readonly conversationService: ConversationService,
     private readonly aiClientService: AIClientService,
-    private readonly planningService: PlanningService,
   ) { }
-
-  private extractPropertyIdsFromMessage(message: string): number[] {
-    const normalized = (message || '').toLowerCase();
-    const looksLikePlanningIntent = /(quy hoach|quy hoạch|so sanh|so sánh|compare)/i.test(normalized);
-
-    if (!looksLikePlanningIntent) {
-      return [];
-    }
-
-    const found = normalized.match(/\b\d{1,8}\b/g) || [];
-    const ids = Array.from(new Set(found.map((v) => Number(v)).filter((v) => Number.isInteger(v) && v > 0)));
-    return ids.slice(0, 3);
-  }
-
-  private async buildPlanningContext(propertyId: number): Promise<PlanningChatContext | null> {
-    try {
-      const summary = await this.planningService.getPropertyPlanningSummary(propertyId);
-      const dossierCode = summary?.dossier?.code || null;
-      const dossier = dossierCode
-        ? await this.planningService.getPlanningDossier(dossierCode).catch(() => null)
-        : null;
-
-      return {
-        propertyId,
-        planningStatus: summary.planningStatus,
-        riskLevel: summary.riskLevel,
-        landUseCurrent: summary.landUseCurrent,
-        landUsePlanned: summary.landUsePlanned,
-        dossierCode: summary?.dossier?.code || null,
-        dossierName: summary?.dossier?.name || null,
-        checkedAt: summary.checkedAt ? new Date(summary.checkedAt).toISOString() : null,
-        reportSummaries: (dossier?.documents || []).slice(0, 8).map((doc) => ({
-          title: doc.title,
-          docType: (doc as any).docType || null,
-          format: doc.format,
-          sourcePath: (doc as any).sourcePath || null,
-          sourceUrl: doc.sourceUrl,
-          rawMeta: (doc as any).rawMeta || null,
-        })),
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  private async resolvePlanningContexts(body: SendMessageChatBotDto): Promise<PlanningChatContext[]> {
-    const ids = new Set<number>();
-
-    if (body.propertyId) {
-      ids.add(body.propertyId);
-    }
-
-    for (const id of body.comparePropertyIds || []) {
-      ids.add(id);
-    }
-
-    for (const id of this.extractPropertyIdsFromMessage(body.message)) {
-      ids.add(id);
-    }
-
-    const idList = Array.from(ids).slice(0, 3);
-    if (!idList.length) {
-      return [];
-    }
-
-    const contexts = await Promise.all(idList.map((id) => this.buildPlanningContext(id)));
-    return contexts.filter((ctx): ctx is PlanningChatContext => !!ctx);
-  }
 
   /**
    * Gửi message trong conversation đã có
@@ -364,15 +294,11 @@ export class MessageService {
 
     this.logger.log(`User ${user.id} is chatting with AI bot: "${body.message}"`);
 
-    const planningContexts = await this.resolvePlanningContexts(body);
-
-    // Build request cho AI service
     const aiRequest: AIChatRequest = {
       userId: user.id,
       message: body.message.trim(),
-      topK: body.topK ?? 16,
       sessionId: user.aiChatSessionId ?? undefined,
-      planningContexts,
+      postId: body.postId,
     };
 
     let conversationWithBot;
@@ -411,9 +337,6 @@ export class MessageService {
           chatbotConversationId: conversationWithBot.id,
           senderType: 'USER',
           content: body.message.trim(),
-          metadata: {
-            topK: aiRequest.topK,
-          },
         },
       });
       userMessageId = userMessage.id;
@@ -430,7 +353,7 @@ export class MessageService {
       // Enrich citations với thông tin post từ DB
       const postIds = aiResponse.citations
         .map(c => c.postId)
-        .filter(id => id != null);
+        .filter((id): id is number => typeof id === 'number');
 
       let enrichedCitations = aiResponse.citations;
 
@@ -478,24 +401,25 @@ export class MessageService {
         const postMap = new Map(posts.map(p => [p.id, p]));
 
         enrichedCitations = aiResponse.citations.map(citation => {
-          const post = postMap.get(citation.postId);
+          const post = citation.postId ? postMap.get(citation.postId) : null;
           if (post) {
+            const postProperty = (post as any).property;
             return {
               ...citation,
               postTitle: post.postTitle,
               postType: post.postType,
-              imageUrl: post.property?.images?.[0]?.imageUrl ?? null,
-              price: post.property?.price,
-              area: post.property?.area,
-              location: post.property?.location,
-              province: post.property?.province?.name,
-              district: post.property?.district?.name,
-              ward: post.property?.ward?.name,
-              bedrooms: post.property?.bedroomNumber,
+              imageUrl: postProperty?.images?.[0]?.imageUrl ?? null,
+              price: postProperty?.price,
+              area: postProperty?.area,
+              location: postProperty?.location,
+              province: postProperty?.province?.name,
+              district: postProperty?.district?.name,
+              ward: postProperty?.ward?.name,
+              bedrooms: postProperty?.bedroomNumber,
             };
           }
-          return citation;
-        });
+          return citation.postId ? null : citation;
+        }).filter((citation): citation is NonNullable<typeof citation> => citation !== null);
       }
 
       const citationsJson = toJsonValue(
@@ -544,7 +468,6 @@ export class MessageService {
         metadata: {
           userId: user.id,
           timestamp: new Date().toISOString(),
-          topK: aiRequest.topK,
         },
       };
     } catch (error) {
@@ -588,7 +511,6 @@ export class MessageService {
           metadata: {
             userId: user.id,
             timestamp: botMessage.createdAt.toISOString(),
-            topK: aiRequest.topK,
             fallback: true,
             fallbackReason: 'AI_SERVICE_UNAVAILABLE',
           },

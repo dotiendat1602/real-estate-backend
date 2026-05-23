@@ -14,6 +14,6 @@ async function bootstrap() {
     },
   );
   const name = 'api-scheduler';
-  await setupApp(name, app);
+  await setupApp(name, app, { trustProxy: false });
 }
 bootstrap();

@@ -22,9 +22,12 @@ import { setupSwagger } from './setup-swagger';
 export const setupApp = async (
   appName: string,
   app: NestExpressApplication,
+  options: { trustProxy?: boolean } = {},
 ) => {
   app.enableCors({ origin: '*' });
-  app.enable('trust proxy'); // only if you're behind a reverse proxy (Heroku, Bluemix, AWS ELB, Nginx, etc)
+  if (options.trustProxy !== false) {
+    app.enable('trust proxy');
+  }
   app.use(
     helmet({
       hsts: false,

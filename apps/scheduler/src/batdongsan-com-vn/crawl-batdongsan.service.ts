@@ -11,7 +11,7 @@ import fsp from "fs/promises";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { UtilityCategory } from "@prisma/client";
 
-import { CityKey, CrawlDetailResult, CrawledProperty, CrawlRunReport, CrawlSeed, LaunchProxyConfig, LocationCache, LocationDistrict, LocationMatch, LocationProvince, ModeKey, NearbyPoi, NearbyPoiFetchResult, NearbyPoiSyncResult, NearbyUtilitiesBackfillResult, NearbyUtilitiesBackfillStatus, OverpassResponse, SeedAntiBotMetrics, SeedCircuitState, WebshareProxy, WebshareProxyListResponse } from "../libs/types/crawl-batdongsan.type";
+import { CityKey, CrawlDetailResult, CrawledProperty, CrawlRunReport, CrawlSeed, LocationCache, LocationDistrict, LocationMatch, LocationProvince, ModeKey, NearbyPoi, NearbyPoiFetchResult, NearbyPoiSyncResult, NearbyUtilitiesBackfillResult, NearbyUtilitiesBackfillStatus, OverpassResponse, SeedAntiBotMetrics, SeedCircuitState } from "../libs/types/crawl-batdongsan.type";
 import {
   dmsToDecimal,
   mapFurnitureStatus,
@@ -26,7 +26,7 @@ import {
   mapOrientation,
   normalizeKey,
 } from "../libs/helpers";
-import { NEARBY_POI_PER_CATEGORY_LIMIT, NEARBY_POI_RADIUS_M, OVERPASS_ABORT_COOLDOWN_MS, OVERPASS_API_URL, OVERPASS_RATE_LIMIT_COOLDOWN_MS, OVERPASS_SERVER_TIMEOUT_COOLDOWN_MS, WEBSHARE_DEFAULT_HOST } from "../libs/constant";
+import { NEARBY_POI_PER_CATEGORY_LIMIT, NEARBY_POI_RADIUS_M, OVERPASS_ABORT_COOLDOWN_MS, OVERPASS_API_URL, OVERPASS_RATE_LIMIT_COOLDOWN_MS, OVERPASS_SERVER_TIMEOUT_COOLDOWN_MS } from "../libs/constant";
 
 chromium.use(StealthPlugin());
 
@@ -59,12 +59,6 @@ export class CrawlBatdongsanService {
 
   private readonly accessToken = process.env.BATDONGSAN_ACCESS_TOKEN || "";
   private readonly refreshToken = process.env.BATDONGSAN_REFRESH_TOKEN || "";
-  private readonly webshareApiKey = process.env.WEBSHARE_API_KEY || "";
-  private webshareProxies: WebshareProxy[] = [];
-  private webshareProxyIndex = 0;
-  private webshareProxyLastFetch = 0;
-  private readonly webshareProxyCacheTtlMs = 5 * 60 * 1000;
-  private runtimeProxyDisabled = false;
   private overpassQueue: Promise<void> = Promise.resolve();
   private lastOverpassRequestAt = 0;
   private overpassCooldownUntil = 0;
@@ -82,7 +76,6 @@ export class CrawlBatdongsanService {
   private navigationAttemptCount = 0;
   private challengeDetectedCount = 0;
   private consecutiveChallengeCount = 0;
-  private proxyRotationCount = 0;
   private seedCircuit = new Map<string, SeedCircuitState>();
   private locationCache: LocationCache | null = null;
 
@@ -131,7 +124,6 @@ export class CrawlBatdongsanService {
         seedsCircuitSkipped: 0,
         challengeDetected: 0,
         challengeRatio: 0,
-        proxyRotations: 0,
         tookMs: 0,
       },
       insertedItems: [],
@@ -157,52 +149,32 @@ export class CrawlBatdongsanService {
           continue;
         }
 
-        let seedProxyRotated = false;
-        const maxSeedRecoveries = this.getSeedMaxRecoveries();
-        let recoveryAttempt = 0;
         let r: { visited: number; inserted: number; skipped: number; failed: number; metrics: SeedAntiBotMetrics } | null =
           null;
 
-        while (recoveryAttempt <= maxSeedRecoveries) {
-          r = await this.crawlCategory(seed, {
-            remainingBudget: detailLimit - totalVisitedLinks,
-            maxPagesPerCategory,
-            pw,
-            onDetailResult: async (detailResult) => {
-              if (detailResult.status === "inserted") {
-                report.insertedItems.push(detailResult);
-              } else if (detailResult.status === "skipped") {
-                report.skippedItems.push(detailResult);
-              } else {
-                report.failedItems.push(detailResult);
-              }
+        r = await this.crawlCategory(seed, {
+          remainingBudget: detailLimit - totalVisitedLinks,
+          maxPagesPerCategory,
+          pw,
+          onDetailResult: async (detailResult) => {
+            if (detailResult.status === "inserted") {
+              report.insertedItems.push(detailResult);
+            } else if (detailResult.status === "skipped") {
+              report.skippedItems.push(detailResult);
+            } else {
+              report.failedItems.push(detailResult);
+            }
 
-              await this.appendReportLine(reportFiles.jsonlPath, detailResult);
-            },
-          });
-
-          const shouldRotate = this.shouldRotateProxyForSeed(r.metrics);
-          if (!shouldRotate || recoveryAttempt >= maxSeedRecoveries) {
-            break;
-          }
-
-          seedProxyRotated = true;
-          recoveryAttempt += 1;
-          this.logger.error(
-            `[AntiBot][${seed.city}/${seed.mode}] challengeRatio=${(r.metrics.challengeRatio * 100).toFixed(1)}% challengeHits=${r.metrics.challengeHits}. Rotate proxy and retry seed (${recoveryAttempt}/${maxSeedRecoveries})`,
-          );
-
-          pw = await this.rotateBrowserContext(pw, "seed challenge threshold reached");
-          await this.bootstrapContext(pw);
-        }
+            await this.appendReportLine(reportFiles.jsonlPath, detailResult);
+          },
+        });
 
         if (!r) {
           continue;
         }
 
-        const stillUnstableAfterRetries = this.shouldRotateProxyForSeed(r.metrics);
-        if (stillUnstableAfterRetries) {
-          const breaker = this.markSeedTrip(seed, "high challenge persisted after recoveries", r.metrics);
+        if (this.shouldTripSeedCircuit(r.metrics)) {
+          const breaker = this.markSeedTrip(seed, "high challenge ratio", r.metrics);
           if (breaker.opened) {
             totalSeedsSkippedByCircuit += 1;
           }
@@ -214,7 +186,7 @@ export class CrawlBatdongsanService {
           `[AntiBot][${seed.city}/${seed.mode}] nav=${r.metrics.navigationAttempts} challenge=${r.metrics.challengeHits} ratio=${(
             r.metrics.challengeRatio *
             100
-          ).toFixed(1)}% rotated=${seedProxyRotated}`,
+          ).toFixed(1)}%`,
         );
 
         totalVisitedLinks += r.visited;
@@ -243,7 +215,7 @@ export class CrawlBatdongsanService {
       `[AntiBot][summary] nav=${this.navigationAttemptCount} challenge=${this.challengeDetectedCount} ratio=${(
         finalChallengeRatio *
         100
-      ).toFixed(1)}% proxyRotations=${this.proxyRotationCount} consecutiveChallenge=${this.consecutiveChallengeCount} seedsCircuitSkipped=${totalSeedsSkippedByCircuit}`,
+      ).toFixed(1)}% consecutiveChallenge=${this.consecutiveChallengeCount} seedsCircuitSkipped=${totalSeedsSkippedByCircuit}`,
     );
 
     report.finishedAt = new Date().toISOString();
@@ -255,7 +227,6 @@ export class CrawlBatdongsanService {
       seedsCircuitSkipped: totalSeedsSkippedByCircuit,
       challengeDetected: this.challengeDetectedCount,
       challengeRatio: finalChallengeRatio,
-      proxyRotations: this.proxyRotationCount,
       tookMs: Date.now() - startedAt,
     };
     await this.writeFinalReport(reportFiles.jsonPath, report);
@@ -312,12 +283,6 @@ export class CrawlBatdongsanService {
   private normalizeManualDetailLimit(value?: number): number {
     if (!Number.isFinite(value)) return this.dailyHardLimit;
     return Math.min(this.dailyHardLimit, Math.max(1, Math.trunc(Number(value))));
-  }
-
-  private getSeedMaxRecoveries(): number {
-    const raw = Number(process.env.BATDONGSAN_SEED_MAX_RECOVERIES || "2");
-    if (!Number.isFinite(raw) || raw < 0) return 2;
-    return Math.min(Math.floor(raw), 5);
   }
 
   private getSeedCircuitTripThreshold(): number {
@@ -408,8 +373,7 @@ export class CrawlBatdongsanService {
     return Math.min(Math.max(raw, 0.05), 1);
   }
 
-  private shouldRotateProxyForSeed(metrics: SeedAntiBotMetrics): boolean {
-    if (!this.isProxyEnabled()) return false;
+  private shouldTripSeedCircuit(metrics: SeedAntiBotMetrics): boolean {
     if (metrics.navigationAttempts <= 0) return false;
 
     const byHits = metrics.challengeHits >= this.getChallengeRotateThresholdHits();
@@ -449,103 +413,27 @@ export class CrawlBatdongsanService {
     }
   }
 
-  private getProfileDirForProxy(proxy?: LaunchProxyConfig): string {
-    if (!proxy?.server) {
-      return this.userDataDir;
-    }
-
-    const raw = `${proxy.server}-${proxy.username || "anon"}`;
-    const safe = raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
-    return path.join(this.userDataDir, safe || "default");
-  }
-
   private async createBrowserContext(): Promise<BrowserContext> {
-    const proxy = this.isProxyEnabled() ? await this.getNextWebshareProxy() : undefined;
-    const context = await this.launchBrowserContext(proxy);
-
-    if (!proxy || !this.getProxyHealthCheckEnabled()) {
-      return context;
-    }
-
-    const healthy = await this.verifyContextConnectivity(context, this.getNavigationProbeTimeoutMs());
-    if (healthy) {
-      return context;
-    }
-
-    this.logger.error(
-      "[Proxy] Proxy context failed connectivity probe. Disable proxy for current process and fallback to direct connection.",
-    );
-    this.runtimeProxyDisabled = true;
-    await context.close().catch(() => null);
-    return this.launchBrowserContext(undefined);
+    return this.launchBrowserContext();
   }
 
-  private async launchBrowserContext(proxy?: LaunchProxyConfig): Promise<BrowserContext> {
+  private async launchBrowserContext(): Promise<BrowserContext> {
     const selectedUserAgent = this.pickRandom(this.userAgents);
-    const profileDir = this.getProfileDirForProxy(proxy);
-    await fsp.mkdir(profileDir, { recursive: true });
+    await fsp.mkdir(this.userDataDir, { recursive: true });
 
     this.logger.log(
-      `Crawler browser profile: headless=${this.getHeadlessFlag()} proxy=${proxy?.server ? `enabled(${proxy.server})` : "disabled"}`,
+      `Crawler browser profile: headless=${this.getHeadlessFlag()}`,
     );
 
-    return chromium.launchPersistentContext(profileDir, {
+    return chromium.launchPersistentContext(this.userDataDir, {
       headless: this.getHeadlessFlag(),
       locale: "vi-VN",
       timezoneId: "Asia/Ho_Chi_Minh",
       viewport: { width: 1366, height: 768 },
       userAgent: selectedUserAgent,
       ignoreHTTPSErrors: true,
-      proxy,
       args: this.getBaseLaunchArgs(this.getHeadlessFlag()),
     });
-  }
-
-  private getNavigationProbeTimeoutMs(): number {
-    const raw = Number(process.env.BATDONGSAN_NAV_PROBE_TIMEOUT_MS || "20000");
-    if (!Number.isFinite(raw) || raw < 3000) return 20000;
-    return Math.min(Math.floor(raw), 120000);
-  }
-
-  private getProxyHealthCheckEnabled(): boolean {
-    const raw = (process.env.BATDONGSAN_PROXY_HEALTHCHECK || "true").toLowerCase();
-    return ["1", "true", "yes", "on"].includes(raw);
-  }
-
-  private isNetworkNavigationError(error: any): boolean {
-    const msg = String(error?.message || error || "").toLowerCase();
-    return (
-      msg.includes("err_timed_out") ||
-      msg.includes("err_aborted") ||
-      msg.includes("err_proxy_connection_failed") ||
-      msg.includes("err_tunnel_connection_failed") ||
-      msg.includes("err_connection_refused") ||
-      msg.includes("err_name_not_resolved")
-    );
-  }
-
-  private async verifyContextConnectivity(context: BrowserContext, timeoutMs: number): Promise<boolean> {
-    const page = await context.newPage();
-    try {
-      this.navigationAttemptCount += 1;
-      await page.goto(this.baseUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-      return true;
-    } catch (error: any) {
-      const errMsg = error?.message || String(error);
-      this.logger.error(`[Probe] context connectivity failed err=${errMsg}`);
-      return !this.isNetworkNavigationError(error);
-    } finally {
-      await page.close().catch(() => null);
-    }
-  }
-
-  private async rotateBrowserContext(current: BrowserContext | null, reason: string): Promise<BrowserContext> {
-    if (current) {
-      await current.close().catch(() => null);
-    }
-    this.proxyRotationCount += 1;
-    this.logger.error(`[AntiBot] rotating browser context (${this.proxyRotationCount}) reason=${reason}`);
-    return this.createBrowserContext();
   }
 
   private async bootstrapContext(context: BrowserContext): Promise<void> {
@@ -603,75 +491,6 @@ export class CrawlBatdongsanService {
   private getCloudflareFriendlyMode(): boolean {
     const raw = (process.env.BATDONGSAN_CLOUDFLARE_FRIENDLY_MODE || "true").toLowerCase();
     return ["1", "true", "yes", "on"].includes(raw);
-  }
-
-  private isProxyEnabled(): boolean {
-    if (this.runtimeProxyDisabled) return false;
-    const enabled = (process.env.BATDONGSAN_PROXY_ENABLED || process.env.WEBSHARE_PROXY_ENABLED || "false").toLowerCase();
-    return ["1", "true", "yes", "on"].includes(enabled);
-  }
-
-  private async fetchWebshareProxies(): Promise<WebshareProxy[]> {
-    if (!this.isProxyEnabled()) return [];
-    if (!this.webshareApiKey) {
-      this.logger.error("Proxy is enabled but WEBSHARE_API_KEY is missing.");
-      return [];
-    }
-
-    const now = Date.now();
-    if (this.webshareProxies.length > 0 && now - this.webshareProxyLastFetch < this.webshareProxyCacheTtlMs) {
-      return this.webshareProxies;
-    }
-
-    try {
-      const response = await fetch("https://proxy.webshare.io/api/v2/proxy/list/?mode=backbone&page_size=100", {
-        headers: {
-          Authorization: `Token ${this.webshareApiKey}`,
-        },
-      });
-
-      if (!response.ok) {
-        this.logger.error(`Unable to fetch Webshare proxies: ${response.status} ${response.statusText}`);
-        return this.webshareProxies;
-      }
-
-      const data = (await response.json()) as WebshareProxyListResponse;
-      const candidates =
-        data.results?.map((proxy) => ({
-          ...proxy,
-          proxy_address: proxy.proxy_address || WEBSHARE_DEFAULT_HOST,
-        })) ?? [];
-      const valid = candidates.filter((proxy) => proxy.valid !== false && !!proxy.username && !!proxy.password);
-
-      if (valid.length > 0) {
-        this.webshareProxies = valid;
-        this.webshareProxyLastFetch = now;
-        this.webshareProxyIndex = Math.floor(Math.random() * valid.length);
-        this.logger.log(`Fetched ${valid.length} valid Webshare proxies`);
-      } else {
-        this.logger.error("Webshare returned no valid proxies.");
-      }
-
-      return this.webshareProxies;
-    } catch (error: any) {
-      this.logger.error(`fetchWebshareProxies failed: ${error?.message || error}`);
-      return this.webshareProxies;
-    }
-  }
-
-  private async getNextWebshareProxy(): Promise<LaunchProxyConfig | undefined> {
-    const proxies = await this.fetchWebshareProxies();
-    if (proxies.length === 0) return undefined;
-
-    const proxy = proxies[this.webshareProxyIndex % proxies.length];
-    this.webshareProxyIndex = (this.webshareProxyIndex + 1) % proxies.length;
-
-    // Webshare endpoint ổn định cho rotating proxy pool
-    return {
-      server: "http://p.webshare.io:80",
-      username: proxy.username,
-      password: proxy.password,
-    };
   }
 
   private async hardenContext(context: BrowserContext): Promise<void> {
@@ -936,7 +755,6 @@ export class CrawlBatdongsanService {
         challengeHits,
         navigationAttempts,
         challengeRatio,
-        proxyRotated: false,
       },
     };
   }

@@ -70,6 +70,7 @@ export class AuthService {
         name: body.name,
         email: body.email,
         password: hashedPassword,
+        phone: body.phone?.trim() || null,
         roleId: role.id,
       },
     });
@@ -117,7 +118,7 @@ export class AuthService {
 
     if (!user) {
       throw new ApiException(
-        `If the account exists, we've sent an email`,
+        `Account with email ${email} not found`,
         HttpStatus.NOT_FOUND,
         ErrorCode.INVALID_INPUT,
       );

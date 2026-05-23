@@ -41,28 +41,6 @@ export interface CrawlSeed {
   categoryPath: string;
 }
 
-export type WebshareProxy = {
-  id: string;
-  username: string;
-  password: string;
-  proxy_address: string | null;
-  port: number;
-  valid: boolean;
-};
-
-export type WebshareProxyListResponse = {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: WebshareProxy[];
-};
-
-export type LaunchProxyConfig = {
-  server: string;
-  username?: string;
-  password?: string;
-};
-
 export type LocationWard = {
   id: number;
   name: string;
@@ -106,7 +84,6 @@ export type SeedAntiBotMetrics = {
   challengeHits: number;
   navigationAttempts: number;
   challengeRatio: number;
-  proxyRotated: boolean;
 };
 
 export type SeedCircuitState = {
@@ -143,7 +120,6 @@ export type CrawlRunReport = {
     seedsCircuitSkipped: number;
     challengeDetected: number;
     challengeRatio: number;
-    proxyRotations: number;
     tookMs: number;
   };
   insertedItems: CrawlDetailResult[];

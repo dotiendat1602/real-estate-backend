@@ -1,6 +1,7 @@
 import {
   IsEmail,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
@@ -38,6 +39,16 @@ export class CoreUserRegisterDto {
   @IsString()
   @MaxLength(255)
   name: string;
+
+  @ApiProperty({
+    description: 'User phone number',
+    example: '0901234567',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  phone?: string;
 
   @ApiProperty({
     description: 'User role',
