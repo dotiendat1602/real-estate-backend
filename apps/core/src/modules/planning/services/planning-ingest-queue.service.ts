@@ -11,7 +11,7 @@ export interface PlanningIngestJobData {
   replaceExisting: boolean;
   totalDocuments: number;
   ingestRequest: PlanningAiIngestRequest;
-  trigger: "manual" | "auto_explain";
+  trigger: "manual";
 }
 
 @Injectable()
