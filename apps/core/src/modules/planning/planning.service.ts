@@ -11,7 +11,6 @@ import { StorageService, UploadedFile } from "libs/modules/storage/storage.servi
 import { ApiException } from "libs/utils/exception";
 import { CoordinateLookupDto } from "./dto/coordinate-lookup.dto";
 import { PlanningBatchIngestDto } from "./dto/planning-batch-ingest.dto";
-import { PlanningExplainDto } from "./dto/planning-explain.dto";
 import { PlanningIngestDto } from "./dto/planning-ingest.dto";
 import { PlanningAiClientService } from "./services/planning-ai-client.service";
 import { PlanningIngestJobData, PlanningIngestQueueService } from "./services/planning-ingest-queue.service";
@@ -698,56 +697,6 @@ export class PlanningService {
         createdAt: doc.createdAt,
       })),
     };
-  }
-
-  async getPropertyPlanningExplain(propertyId: number, dto: PlanningExplainDto) {
-    const summary = await this.getPropertyPlanningSummary(propertyId);
-    const dossierCode = summary?.dossier?.code || null;
-    const dossier = dossierCode ? await this.getPlanningDossier(dossierCode).catch(() => null) : null;
-
-    const autoIngestDocuments = this.buildPlanningIngestDocuments({
-      propertyId,
-      summary,
-      dossier,
-    });
-
-    if (autoIngestDocuments.length) {
-      // Best-effort: enqueue auto-ingest in background so explain API never blocks on OCR.
-      await this.planningIngestQueueService.enqueue({
-        propertyId,
-        dossierCode,
-        replaceExisting: false,
-        totalDocuments: autoIngestDocuments.length,
-        ingestRequest: {
-          replaceExisting: false,
-          documents: autoIngestDocuments,
-        },
-        trigger: "auto_explain",
-      }).catch(() => null);
-    }
-
-    return await this.planningAiClientService.explain({
-      propertyId,
-      question: dto?.question?.trim() || undefined,
-      summary: {
-        planningStatus: summary.planningStatus,
-        riskLevel: summary.riskLevel,
-        landUseCurrent: summary.landUseCurrent,
-        landUsePlanned: summary.landUsePlanned,
-        dossierCode: summary.dossier?.code || null,
-        dossierName: summary.dossier?.name || null,
-        checkedAt: summary.checkedAt ? new Date(summary.checkedAt).toISOString() : null,
-      },
-      documents: (dossier?.documents || []).map((doc) => ({
-        planningDocumentId: (doc as any)?.id,
-        title: this.sanitizeText(doc.title) || "Tai lieu quy hoach",
-        format: this.sanitizeText(doc.format),
-        docType: this.sanitizeText((doc as any)?.docType || null),
-        sourcePath: this.sanitizeText((doc as any)?.sourcePath || null),
-        sourceUrl: this.sanitizeText((doc as any)?.sourceUrl || null),
-        rawMeta: this.sanitizeJson((doc as any)?.rawMeta || null),
-      })),
-    });
   }
 
   private extractPlanYear(value?: string | null): number | null {
